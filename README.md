@@ -25,6 +25,31 @@ uv add fastapi uvicorn langgraph pydantic
 uvicorn trailmate.main:app --reload
 ```
 
+## Pull Ollama model
+
+```powershell
+ollama pull llama3.2:3b
+```
+
+## Start Ollama model
+```powershell
+ollama run llama3.2:3b
+```
+
+# Start LiteLLM + PostgreSQL
+```powershell
+docker compose up -d
+```
+
+
+# Check containers
+```powershell
+docker compose ps
+```
+
+
+
+
 
 ### Swagger UI:
 

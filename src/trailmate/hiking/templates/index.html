@@ -1,0 +1,796 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+
+    <meta
+        name="viewport"
+        content="width=device-width, initial-scale=1.0"
+    >
+
+    <title>TrailMate</title>
+
+    <link
+        rel="stylesheet"
+        href="/hiking/static/style.css"
+    >
+</head>
+
+<body>
+
+<div class="app">
+
+    <!-- ================================
+         SIDEBAR
+    ================================= -->
+
+    <aside class="sidebar">
+
+        <div class="brand">
+            <div class="brand-icon">
+                🥾
+            </div>
+
+            <span>TrailMate</span>
+        </div>
+
+        <button
+            id="newChatBtn"
+            class="new-chat-btn"
+        >
+            <span>＋</span>
+            New chat
+        </button>
+
+        <div class="sidebar-bottom">
+            AI hiking assistant
+        </div>
+
+    </aside>
+
+
+    <!-- ================================
+         MAIN
+    ================================= -->
+
+    <main class="main">
+
+        <header class="header">
+
+            <div>
+                <strong>TrailMate</strong>
+
+                <span>
+                    Hiking assistant
+                </span>
+            </div>
+
+        </header>
+
+
+        <!-- ================================
+             CHAT
+        ================================= -->
+
+        <section
+            id="chatContainer"
+            class="chat-container"
+        >
+
+            <div
+                id="chatContent"
+                class="chat-content"
+            >
+
+                <!-- Welcome -->
+
+                <div
+                    id="welcome"
+                    class="welcome"
+                >
+
+                    <div class="welcome-icon">
+                        🥾
+                    </div>
+
+                    <h1>
+                        Where are you hiking?
+                    </h1>
+
+                    <p>
+                        Ask me about trails, difficulty,
+                        equipment, safety, or planning
+                        your next hike.
+                    </p>
+
+                    <div class="suggestions">
+
+                        <button
+                            class="suggestion"
+                            data-message="What should I carry for a day hike?"
+                        >
+                            🎒 What should I carry?
+                        </button>
+
+                        <button
+                            class="suggestion"
+                            data-message="How do I plan a hiking trip?"
+                        >
+                            🗺️ Plan a hike
+                        </button>
+
+                        <button
+                            class="suggestion"
+                            data-message="How can I stay safe while hiking?"
+                        >
+                            🛡️ Hiking safety
+                        </button>
+
+                        <button
+                            class="suggestion"
+                            data-message="How difficult is hiking for a beginner?"
+                        >
+                            🥾 Trail difficulty
+                        </button>
+
+                    </div>
+
+                </div>
+
+            </div>
+
+        </section>
+
+
+        <!-- ================================
+             INPUT
+        ================================= -->
+
+        <div class="input-area">
+
+            <div class="input-box">
+
+                <textarea
+                    id="messageInput"
+                    rows="1"
+                    placeholder="Message TrailMate..."
+                ></textarea>
+
+                <button
+                    id="sendBtn"
+                    class="send-btn"
+                >
+                    ↑
+                </button>
+
+            </div>
+
+            <div class="input-hint">
+                TrailMate may make mistakes.
+                Verify important trail and safety information.
+            </div>
+
+        </div>
+
+    </main>
+
+</div>
+
+
+<script>
+
+const chatContainer =
+    document.getElementById("chatContainer");
+
+const chatContent =
+    document.getElementById("chatContent");
+
+const messageInput =
+    document.getElementById("messageInput");
+
+const sendBtn =
+    document.getElementById("sendBtn");
+
+const newChatBtn =
+    document.getElementById("newChatBtn");
+
+let isStreaming = false;
+
+
+// ============================================
+// NEW CHAT
+// ============================================
+
+async function createNewChat() {
+
+    try {
+
+        const response = await fetch(
+            "/hiking/new-chat",
+            {
+                method: "POST",
+                credentials: "include"
+            }
+        );
+
+        if (!response.ok) {
+            throw new Error(
+                "Unable to create new chat"
+            );
+        }
+
+        chatContent.innerHTML = "";
+
+        chatContent.appendChild(
+            createWelcome()
+        );
+
+        messageInput.focus();
+
+    } catch (error) {
+
+        console.error(error);
+
+        alert(
+            "Unable to create a new chat."
+        );
+    }
+}
+
+
+// ============================================
+// WELCOME SCREEN
+// ============================================
+
+function createWelcome() {
+
+    const div =
+        document.createElement("div");
+
+    div.className = "welcome";
+
+    div.id = "welcome";
+
+    div.innerHTML = `
+
+        <div class="welcome-icon">
+            🥾
+        </div>
+
+        <h1>
+            Where are you hiking?
+        </h1>
+
+        <p>
+            Ask me about trails, difficulty,
+            equipment, safety, or planning
+            your next hike.
+        </p>
+
+        <div class="suggestions">
+
+            <button
+                class="suggestion"
+                data-message="What should I carry for a day hike?"
+            >
+                🎒 What should I carry?
+            </button>
+
+            <button
+                class="suggestion"
+                data-message="How do I plan a hiking trip?"
+            >
+                🗺️ Plan a hike
+            </button>
+
+            <button
+                class="suggestion"
+                data-message="How can I stay safe while hiking?"
+            >
+                🛡️ Hiking safety
+            </button>
+
+            <button
+                class="suggestion"
+                data-message="How difficult is hiking for a beginner?"
+            >
+                🥾 Trail difficulty
+            </button>
+
+        </div>
+    `;
+
+    return div;
+}
+
+
+// ============================================
+// ADD MESSAGE
+// ============================================
+
+function addMessage(
+    role,
+    text = ""
+) {
+
+    const welcome =
+        document.getElementById("welcome");
+
+    if (welcome) {
+        welcome.remove();
+    }
+
+
+    const message =
+        document.createElement("div");
+
+    message.className =
+        `message ${role}`;
+
+
+    const avatar =
+        document.createElement("div");
+
+    avatar.className = "avatar";
+
+    avatar.textContent =
+        role === "user"
+            ? "U"
+            : "🥾";
+
+
+    const body =
+        document.createElement("div");
+
+    body.className = "message-body";
+
+
+    const content =
+        document.createElement("div");
+
+    content.className =
+        "message-content";
+
+    content.textContent = text;
+
+
+    body.appendChild(content);
+
+    message.appendChild(avatar);
+
+    message.appendChild(body);
+
+    chatContent.appendChild(message);
+
+    scrollToBottom();
+
+    return content;
+}
+
+
+// ============================================
+// TYPING INDICATOR
+// ============================================
+
+function addTypingIndicator() {
+
+    const message =
+        document.createElement("div");
+
+    message.id =
+        "typingIndicator";
+
+    message.className =
+        "message assistant";
+
+
+    message.innerHTML = `
+
+        <div class="avatar">
+            🥾
+        </div>
+
+        <div class="message-body">
+
+            <div class="typing">
+                <span></span>
+                <span></span>
+                <span></span>
+            </div>
+
+        </div>
+    `;
+
+    chatContent.appendChild(message);
+
+    scrollToBottom();
+}
+
+
+function removeTypingIndicator() {
+
+    const indicator =
+        document.getElementById(
+            "typingIndicator"
+        );
+
+    if (indicator) {
+        indicator.remove();
+    }
+}
+
+
+// ============================================
+// SCROLL
+// ============================================
+
+function scrollToBottom() {
+
+    chatContainer.scrollTop =
+        chatContainer.scrollHeight;
+}
+
+
+// ============================================
+// SEND MESSAGE
+// ============================================
+
+async function sendMessage(
+    customMessage = null
+) {
+
+    if (isStreaming) {
+        return;
+    }
+
+
+    const message =
+        customMessage ||
+        messageInput.value.trim();
+
+
+    if (!message) {
+        return;
+    }
+
+
+    messageInput.value = "";
+
+    messageInput.style.height =
+        "auto";
+
+
+    // User message
+
+    addMessage(
+        "user",
+        message
+    );
+
+
+    isStreaming = true;
+
+    sendBtn.disabled = true;
+
+    messageInput.disabled = true;
+
+
+    addTypingIndicator();
+
+
+    try {
+
+        const response =
+            await fetch(
+                "/hiking/ask",
+                {
+                    method: "POST",
+
+                    credentials: "include",
+
+                    headers: {
+                        "Content-Type":
+                            "application/json"
+                    },
+
+                    body: JSON.stringify({
+                        message: message
+                    })
+                }
+            );
+
+
+        if (!response.ok) {
+
+            const error =
+                await response.text();
+
+            throw new Error(error);
+        }
+
+
+        removeTypingIndicator();
+
+
+        const assistantContent =
+            addMessage(
+                "assistant",
+                ""
+            );
+
+
+        let fullText = "";
+
+
+        const reader =
+            response.body.getReader();
+
+        const decoder =
+            new TextDecoder();
+
+
+        let buffer = "";
+
+
+        while (true) {
+
+            const {
+                value,
+                done
+            } = await reader.read();
+
+
+            if (done) {
+                break;
+            }
+
+
+            buffer +=
+                decoder.decode(
+                    value,
+                    {
+                        stream: true
+                    }
+                );
+
+
+            const events =
+                buffer.split("\n\n");
+
+
+            buffer =
+                events.pop();
+
+
+            for (
+                const event
+                of events
+            ) {
+
+                const lines =
+                    event.split("\n");
+
+
+                let eventType =
+                    "message";
+
+                let data = "";
+
+
+                for (
+                    const line
+                    of lines
+                ) {
+
+                    if (
+                        line.startsWith(
+                            "event:"
+                        )
+                    ) {
+
+                        eventType =
+                            line
+                                .substring(6)
+                                .trim();
+                    }
+
+
+                    if (
+                        line.startsWith(
+                            "data:"
+                        )
+                    ) {
+
+                        data +=
+                            line
+                                .substring(5)
+                                .trim();
+                    }
+                }
+
+
+                if (!data) {
+                    continue;
+                }
+
+
+                let payload;
+
+                try {
+
+                    payload =
+                        JSON.parse(data);
+
+                } catch (error) {
+
+                    console.error(
+                        "Invalid SSE data",
+                        error
+                    );
+
+                    continue;
+                }
+
+
+                // ============================
+                // STREAM CHUNK
+                // ============================
+
+                if (
+                    eventType === "chunk"
+                ) {
+
+                    fullText +=
+                        payload.content || "";
+
+
+                    assistantContent.textContent =
+                        fullText;
+
+
+                    scrollToBottom();
+                }
+
+
+                // ============================
+                // ERROR
+                // ============================
+
+                if (
+                    eventType === "error"
+                ) {
+
+                    throw new Error(
+                        payload.message ||
+                        "Server error"
+                    );
+                }
+            }
+        }
+
+
+        assistantContent.textContent =
+            fullText;
+
+
+    } catch (error) {
+
+        console.error(error);
+
+        removeTypingIndicator();
+
+        addMessage(
+            "assistant",
+            "Sorry, something went wrong. Please try again."
+        );
+
+    } finally {
+
+        isStreaming = false;
+
+        sendBtn.disabled = false;
+
+        messageInput.disabled = false;
+
+        messageInput.focus();
+    }
+}
+
+
+// ============================================
+// SEND BUTTON
+// ============================================
+
+sendBtn.addEventListener(
+    "click",
+    () => sendMessage()
+);
+
+
+// ============================================
+// ENTER = SEND
+// SHIFT + ENTER = NEW LINE
+// ============================================
+
+messageInput.addEventListener(
+    "keydown",
+    event => {
+
+        if (
+            event.key === "Enter" &&
+            !event.shiftKey
+        ) {
+
+            event.preventDefault();
+
+            sendMessage();
+        }
+    }
+);
+
+
+// ============================================
+// TEXTAREA AUTO RESIZE
+// ============================================
+
+messageInput.addEventListener(
+    "input",
+    function() {
+
+        this.style.height = "auto";
+
+        this.style.height =
+            Math.min(
+                this.scrollHeight,
+                150
+            ) + "px";
+    }
+);
+
+
+// ============================================
+// NEW CHAT
+// ============================================
+
+newChatBtn.addEventListener(
+    "click",
+    createNewChat
+);
+
+
+// ============================================
+// SUGGESTIONS
+// ============================================
+
+document.addEventListener(
+    "click",
+    event => {
+
+        const button =
+            event.target.closest(
+                ".suggestion"
+            );
+
+
+        if (!button) {
+            return;
+        }
+
+
+        sendMessage(
+            button.dataset.message
+        );
+    }
+);
+
+
+// ============================================
+// INITIAL FOCUS
+// ============================================
+
+messageInput.focus();
+
+</script>
+
+</body>
+</html>
