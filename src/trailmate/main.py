@@ -7,8 +7,10 @@ from fastapi.staticfiles import StaticFiles
 
 from langgraph.graph import START, END, StateGraph
 from pydantic import BaseModel
+from langchain_openai import ChatOpenAI
 
 from .hiking.graph import router as hiking_router
+from fastapi.responses import StreamingResponse
 
 
 # =========================================================
@@ -58,6 +60,15 @@ class MessageRequest(BaseModel):
     message: str
 
 
+llm = ChatOpenAI(
+    model="hiking-small",
+    temperature=0,
+    api_key="sk-1234",
+    base_url="http://localhost:4000/v1",
+    streaming=True,
+)
+
+
 # =========================================================
 # SIMPLE TEST GRAPH
 # =========================================================
@@ -69,13 +80,17 @@ def entry_node(state: State):
     }
 
 
-def processing_node(state: State):
+async def processing_node(state: State):
 
+    answer = ""
     message = state["message"]
+
+    async for chunk in llm.astream(message):
+        answer += chunk.content
 
     return {
         "response":
-            f"TrailMate received your message: {message}"
+            f"{answer}"
     }
 
 
@@ -134,21 +149,25 @@ graph = builder.compile()
 # =========================================================
 
 @app.post("/message")
-def send_message(
-    request: MessageRequest,
-):
+async def send_message(request: MessageRequest):
 
-    result = graph.invoke(
-        {
-            "message": request.message,
-            "response": "",
-        }
+    async def event_generator():
+
+        async for event in graph.astream_events(
+            {
+                "message": request.message,
+                "response": "",
+            },
+            version="v2",
+        ):
+
+            yield f"data: {event}\n\n"
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
     )
 
-    return {
-        "message": result["message"],
-        "response": result["response"],
-    }
 
 
 # =========================================================

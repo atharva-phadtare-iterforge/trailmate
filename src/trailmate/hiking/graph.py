@@ -2,11 +2,11 @@ from typing import (
     TypedDict,
     Literal,
     Annotated,
-    AsyncGenerator,
 )
 
 from uuid import uuid4
 
+import asyncio
 import json
 import time
 
@@ -18,7 +18,6 @@ from fastapi import (
 )
 
 from fastapi.responses import StreamingResponse
-
 from pydantic import BaseModel
 
 from langgraph.graph import (
@@ -28,27 +27,19 @@ from langgraph.graph import (
 )
 
 from langgraph.graph.message import add_messages
-
 from langgraph.checkpoint.memory import MemorySaver
-
 from langchain_core.messages import (
     HumanMessage,
     AIMessage,
+    BaseMessage,
 )
 
-from langchain_openai import ChatOpenAI
+from langgraph.runtime import Runtime
+from litellm import acompletion
 
-
-# =========================================================
-# LLM
-# =========================================================
-
-llm = ChatOpenAI(
-    model="hiking-small",
-    temperature=0,
-    api_key="sk-1234",
-    base_url="http://localhost:4000/v1",
-    streaming=True,
+from ..guardrails import (
+    validate_input,
+    validate_output,
 )
 
 
@@ -63,49 +54,94 @@ router = APIRouter(
 
 
 # =========================================================
+# CONSTANTS
+# =========================================================
+
+MODEL = "openai/hiking-small"
+API_KEY = "sk-1234"
+API_BASE = "http://localhost:4000/v1"
+
+CLASSIFICATION_CONFIDENCE_THRESHOLD = 0.50
+
+GUARDRAIL_CHECK_SIZE = 200
+
+
+# =========================================================
+# TYPES
+# =========================================================
+
+Category = Literal[
+    "trail",
+    "general",
+    "reject",
+]
+
+TrailType = Literal[
+    "trail_info",
+    "difficulty",
+    "equipment",
+    "safety",
+    "planning",
+    "general_hiking",
+]
+
+
+class ClassificationResult(TypedDict):
+    category: Category
+    trail_type: TrailType
+    confidence: float
+
+
+class State(TypedDict):
+
+    messages: Annotated[
+        list[BaseMessage],
+        add_messages,
+    ]
+
+    category: Category
+    trail_type: TrailType
+    classification_confidence: float
+    response: str
+    input_allowed: bool
+    input_guardrail_message: str
+    output_allowed: bool
+    output_guardrail_message: str
+
+# =========================================================
 # REQUEST MODEL
 # =========================================================
 
 class UserMessage(BaseModel):
     message: str
 
+# =========================================================
+# STREAM CONTEXT
+# =========================================================
+
+class StreamContext:
+    def __init__(self):
+        self.queue: asyncio.Queue = asyncio.Queue()
 
 # =========================================================
-# STATE
+# SSE HELPER
 # =========================================================
 
-class State(TypedDict):
-
-    messages: Annotated[list, add_messages]
-
-    category: Literal[
-        "trail",
-        "general",
-        "reject",
-    ]
-
-    trail_type: Literal[
-        "trail_info",
-        "difficulty",
-        "equipment",
-        "safety",
-        "planning",
-        "general_hiking",
-    ]
-
-    response: str
-
-    # Input guardrail
-    input_allowed: bool
-    input_guardrail_message: str
-
-    # Output guardrail
-    output_allowed: bool
-    output_guardrail_message: str
+async def send_sse_event(
+    stream_context: StreamContext,
+    event_type: str,
+    **data,
+):
+    await stream_context.queue.put(
+        {
+            "type": event_type,
+            **data,
+        }
+    )
 
 
 # =========================================================
-# HELPER
+# MESSAGE HELPERS
 # =========================================================
 
 def get_latest_message(state: State) -> str:
@@ -113,23 +149,58 @@ def get_latest_message(state: State) -> str:
     for message in reversed(state["messages"]):
 
         if isinstance(message, HumanMessage):
-            return message.content
+
+            content = message.content
+
+            if isinstance(content, str):
+                return content
+
+            return str(content)
 
     return ""
+
+
+def message_to_dict(message: BaseMessage) -> dict:
+
+    if isinstance(message, HumanMessage):
+
+        return {
+            "role": "user",
+            "content": message.content,
+        }
+
+    if isinstance(message, AIMessage):
+
+        return {
+            "role": "assistant",
+            "content": message.content,
+        }
+
+    return {
+        "role": "user",
+        "content": str(message.content),
+    }
 
 
 def conversation_prompt(
     state: State,
     system_prompt: str,
-):
+) -> list[dict]:
 
-    return [
+    messages = [
         {
             "role": "system",
             "content": system_prompt,
-        },
-        *state["messages"],
+        }
     ]
+
+    for message in state["messages"]:
+
+        messages.append(
+            message_to_dict(message)
+        )
+
+    return messages
 
 
 # =========================================================
@@ -138,69 +209,18 @@ def conversation_prompt(
 
 def input_guardrail_node(state: State):
 
-    message = get_latest_message(state).strip()
+    message = get_latest_message(state)
 
-    # -----------------------------------------------------
-    # Empty input
-    # -----------------------------------------------------
+    result = validate_input(message)
 
-    if not message:
-
-        return {
-            "input_allowed": False,
-            "input_guardrail_message": (
-                "Please provide a hiking-related question."
-            ),
-        }
-
-    # -----------------------------------------------------
-    # Maximum input length
-    # -----------------------------------------------------
-
-    if len(message) > 5000:
-
-        return {
-            "input_allowed": False,
-            "input_guardrail_message": (
-                "Your message is too long. "
-                "Please shorten it."
-            ),
-        }
-
-    # -----------------------------------------------------
-    # Basic prompt-injection / abuse checks
-    # -----------------------------------------------------
-
-    blocked_patterns = [
-        "ignore previous instructions",
-        "ignore all previous instructions",
-        "system prompt",
-        "reveal your prompt",
-        "show me your instructions",
-    ]
-
-    lower_message = message.lower()
-
-    for pattern in blocked_patterns:
-
-        if pattern in lower_message:
-
-            return {
-                "input_allowed": False,
-                "input_guardrail_message": (
-                    "I can only help with hiking, "
-                    "trekking, trails, equipment, "
-                    "planning, and safety."
-                ),
-            }
-
-    # -----------------------------------------------------
-    # Allowed
-    # -----------------------------------------------------
+    print(
+        "[HIKING INPUT GUARDRAIL]"
+        f" allowed={result['allowed']}"
+    )
 
     return {
-        "input_allowed": True,
-        "input_guardrail_message": "",
+        "input_allowed": result["allowed"],
+        "input_guardrail_message": result["message"],
     }
 
 
@@ -217,296 +237,446 @@ def route_input_guardrail(state: State):
 
 
 # =========================================================
-# INPUT GUARDRAIL BLOCK RESPONSE
+# INPUT GUARDRAIL BLOCK
 # =========================================================
 
-def input_guardrail_blocked(state: State):
+async def input_guardrail_blocked(
+    state: State,
+    runtime: Runtime[StreamContext],
+):
 
     response = state["input_guardrail_message"]
 
+    await send_sse_event(
+        runtime.context,
+        "guardrail_block",
+        guardrail="input",
+        content=response,
+    )
+
+    await send_sse_event(
+        runtime.context,
+        "stream_done",
+    )
+
     return {
         "response": response,
-
         "messages": [
-            AIMessage(content=response)
+            AIMessage(
+                content=response
+            )
         ],
     }
 
 
 # =========================================================
-# MAIN CLASSIFIER
+# LLM CLASSIFIER
 # =========================================================
 
-def classify_node(state: State):
+async def classify_node(
+    state: State,
+    runtime: Runtime[StreamContext],
+) -> dict:
 
-    message = get_latest_message(state).lower()
+    message = get_latest_message(state)
 
-    trail_keywords = [
-        "trail",
-        "hike",
-        "hiking",
-        "trek",
-        "trekking",
-        "mountain",
-        "route",
-        "waterfall",
-        "summit",
-        "difficulty",
-        "climb",
-        "climbing",
-        "peak",
-        "forest",
-        "hill",
-        "camping",
-        "camp",
-        "trekker",
-        "altitude",
-        "elevation",
-        "adventure",
-        "outdoor",
+    classifier_prompt = """
+You are the STRICT classification engine for TrailMate.
+
+Your ONLY job is to classify the user's message.
+
+DO NOT answer the user's question.
+
+DO NOT provide advice.
+
+DO NOT explain your decision.
+
+Return ONLY valid JSON.
+
+=========================================================
+ALLOWED CATEGORY VALUES
+=========================================================
+
+category MUST be exactly one of:
+
+- trail
+- general
+- reject
+
+=========================================================
+ALLOWED TRAIL TYPES
+=========================================================
+
+If category = "trail", trail_type MUST be exactly one of:
+
+- trail_info
+- difficulty
+- equipment
+- safety
+- planning
+- general_hiking
+
+If category = "general" or "reject",
+trail_type MUST be:
+
+general_hiking
+
+=========================================================
+CLASSIFICATION RULES
+=========================================================
+
+TRAIL:
+
+Use category "trail" when the user is asking about:
+
+- hiking
+- trekking
+- trails
+- mountains
+- outdoor hiking
+- hiking preparation
+- hiking equipment
+- hiking safety
+- hiking difficulty
+- hiking planning
+- trail information
+
+GENERAL:
+
+Use category "general" ONLY for simple conversational messages
+such as:
+
+- hello
+- hi
+- hey
+- thanks
+- thank you
+- good morning
+- good afternoon
+- good evening
+
+REJECT:
+
+Use category "reject" for questions unrelated to:
+
+- hiking
+- trekking
+- trails
+- mountains
+- hiking preparation
+- outdoor hiking
+
+=========================================================
+TRAIL TYPE RULES
+=========================================================
+
+trail_info:
+
+- trail location
+- route
+- distance
+- duration
+- elevation
+- altitude
+- starting point
+- destination
+- trail information
+- opening hours
+- entry fee
+- best season
+- trail details
+
+difficulty:
+
+- difficulty
+- difficult
+- easy
+- hard
+- beginner suitability
+- fitness requirements
+- steepness
+- challenging terrain
+- physical difficulty
+
+equipment:
+
+- equipment
+- gear
+- shoes
+- backpack
+- clothing
+- water bottle
+- trekking poles
+- flashlight
+- first aid
+- what to carry
+- what to bring
+
+safety:
+
+- hiking safety
+- dangerous conditions
+- weather safety
+- rain
+- monsoon
+- storms
+- wild animals
+- snakes
+- injuries
+- emergencies
+- rescue
+
+planning:
+
+- planning a hike
+- planning a trek
+- itinerary
+- hiking schedule
+- trip planning
+- preparing for a hike
+- preparing for a trek
+- organizing a hiking trip
+
+general_hiking:
+
+Hiking-related questions that do not clearly fit
+trail_info, difficulty, equipment, safety, or planning.
+
+=========================================================
+IMPORTANT
+=========================================================
+
+Classify based on USER INTENT.
+
+Examples:
+
+"What equipment should I carry for a difficult hike?"
+
+=> equipment
+
+"Is this difficult for a beginner?"
+
+=> difficulty
+
+"Is this trail safe during monsoon?"
+
+=> safety
+
+"How far is the trail and where does it start?"
+
+=> trail_info
+
+"Create a two-day plan for this trek."
+
+=> planning
+
+=========================================================
+CONFIDENCE
+=========================================================
+
+Return confidence between 0 and 1.
+
+0.90 - 1.00 = very clear
+0.75 - 0.89 = reasonably clear
+0.50 - 0.74 = ambiguous
+0.00 - 0.49 = highly uncertain
+
+=========================================================
+OUTPUT
+=========================================================
+
+Return EXACTLY:
+
+{
+  "category": "trail",
+  "trail_type": "planning",
+  "confidence": 0.95
+}
+
+No markdown.
+No explanation.
+No additional fields.
+"""
+
+    messages = [
+        {
+            "role": "system",
+            "content": classifier_prompt,
+        },
+        {
+            "role": "user",
+            "content": message,
+        },
     ]
 
-    general_keywords = [
-        "hello",
-        "hi",
-        "hey",
-        "thanks",
-        "thank you",
-        "good morning",
-        "good afternoon",
-        "good evening",
-    ]
+    try:
 
-    if any(
-        keyword in message
-        for keyword in trail_keywords
-    ):
+        response = await acompletion(
+            model=MODEL,
+            messages=messages,
+            api_key=API_KEY,
+            api_base=API_BASE,
+            temperature=0,
+        )
 
-        return {
-            "category": "trail",
+        content = response.choices[0].message.content
+
+        print(
+            f"[HIKING CLASSIFIER] Raw response: {content}"
+        )
+
+        if not content:
+            raise ValueError(
+                "Classifier returned empty response"
+            )
+
+        # -------------------------------------------------
+        # Remove accidental markdown fences
+        # -------------------------------------------------
+
+        content = content.strip()
+
+        if content.startswith("```"):
+
+            content = (
+                content
+                .replace("```json", "")
+                .replace("```", "")
+                .strip()
+            )
+
+        # -------------------------------------------------
+        # Parse JSON
+        # -------------------------------------------------
+
+        result = json.loads(content)
+
+        category = result.get("category")
+        trail_type = result.get("trail_type")
+        confidence = result.get("confidence")
+
+        # -------------------------------------------------
+        # STRICT CATEGORY VALIDATION
+        # -------------------------------------------------
+
+        valid_categories = {
+            "trail",
+            "general",
+            "reject",
         }
 
-    elif any(
-        keyword in message
-        for keyword in general_keywords
-    ):
+        if category not in valid_categories:
 
-        return {
-            "category": "general",
+            raise ValueError(
+                f"Invalid category: {category}"
+            )
+
+        # -------------------------------------------------
+        # STRICT TRAIL TYPE VALIDATION
+        # -------------------------------------------------
+
+        valid_trail_types = {
+            "trail_info",
+            "difficulty",
+            "equipment",
+            "safety",
+            "planning",
+            "general_hiking",
         }
 
-    else:
+        if trail_type not in valid_trail_types:
+
+            raise ValueError(
+                f"Invalid trail_type: {trail_type}"
+            )
+
+        # -------------------------------------------------
+        # CONFIDENCE
+        # -------------------------------------------------
+
+        confidence = float(confidence)
+
+        if not 0 <= confidence <= 1:
+
+            raise ValueError(
+                f"Invalid confidence: {confidence}"
+            )
+
+        # -------------------------------------------------
+        # Non-trail categories
+        # -------------------------------------------------
+
+        if category != "trail":
+
+            trail_type = "general_hiking"
+
+        # -------------------------------------------------
+        # LOW CONFIDENCE
+        # -------------------------------------------------
+
+        if confidence < CLASSIFICATION_CONFIDENCE_THRESHOLD:
+
+            print(
+                "[HIKING CLASSIFIER]"
+                f" Low confidence={confidence:.2f}"
+                " -> reject"
+            )
+
+            category = "reject"
+            trail_type = "general_hiking"
+
+        # -------------------------------------------------
+        # FINAL RESULT
+        # -------------------------------------------------
+
+        print(
+            "[HIKING CLASSIFIER]"
+            f" category={category}"
+            f" trail_type={trail_type}"
+            f" confidence={confidence:.2f}"
+        )
+
+        # -------------------------------------------------
+        # Send classification to frontend
+        # -------------------------------------------------
+
+        await send_sse_event(
+            runtime.context,
+            "classification",
+            category=category,
+            trail_type=trail_type,
+            confidence=confidence,
+        )
+
+        return {
+            "category": category,
+            "trail_type": trail_type,
+            "classification_confidence": confidence,
+        }
+
+    except Exception as exc:
+
+        print(
+            f"[HIKING CLASSIFIER] Error: {exc}"
+        )
+
+        # -------------------------------------------------
+        # Strict failure
+        # -------------------------------------------------
+
+        await send_sse_event(
+            runtime.context,
+            "classification",
+            category="reject",
+            trail_type="general_hiking",
+            confidence=0.0,
+        )
 
         return {
             "category": "reject",
+            "trail_type": "general_hiking",
+            "classification_confidence": 0.0,
         }
-
-
-# =========================================================
-# HIKING QUESTION CLASSIFIER
-# =========================================================
-
-def analyze_trail_node(state: State):
-
-    message = get_latest_message(state).lower()
-
-    # =====================================================
-    # PLANNING
-    # =====================================================
-
-    planning_keywords = [
-        "plan",
-        "planning",
-        "itinerary",
-        "schedule",
-        "day plan",
-        "trip plan",
-        "hiking plan",
-        "hike plan",
-        "trek plan",
-        "trekking plan",
-        "hiking trip",
-        "trekking trip",
-        "plan a hike",
-        "plan a trek",
-        "plan my hike",
-        "plan my trek",
-        "prepare for a hike",
-        "prepare for a trek",
-        "prepare for hiking",
-        "prepare for trekking",
-        "organize a hike",
-        "organise a hike",
-        "organize a trek",
-        "organise a trek",
-    ]
-
-    if any(
-        keyword in message
-        for keyword in planning_keywords
-    ):
-
-        return {
-            "trail_type": "planning",
-        }
-
-    # =====================================================
-    # DIFFICULTY
-    # =====================================================
-
-    difficulty_keywords = [
-        "difficulty",
-        "difficult",
-        "easy",
-        "hard",
-        "beginner",
-        "advanced",
-        "moderate",
-        "fitness",
-        "fit",
-        "fitness level",
-        "level",
-        "challenging",
-        "challenge",
-        "tough",
-        "steep",
-        "steepness",
-    ]
-
-    if any(
-        keyword in message
-        for keyword in difficulty_keywords
-    ):
-
-        return {
-            "trail_type": "difficulty",
-        }
-
-    # =====================================================
-    # EQUIPMENT
-    # =====================================================
-
-    equipment_keywords = [
-        "equipment",
-        "gear",
-        "carry",
-        "bring",
-        "shoes",
-        "shoe",
-        "hiking shoes",
-        "trekking shoes",
-        "backpack",
-        "bag",
-        "clothes",
-        "clothing",
-        "jacket",
-        "raincoat",
-        "rain jacket",
-        "torch",
-        "flashlight",
-        "headlamp",
-        "water bottle",
-        "bottle",
-        "trekking pole",
-        "trekking poles",
-        "stick",
-        "first aid",
-        "first-aid",
-    ]
-
-    if any(
-        keyword in message
-        for keyword in equipment_keywords
-    ):
-
-        return {
-            "trail_type": "equipment",
-        }
-
-    # =====================================================
-    # SAFETY
-    # =====================================================
-
-    safety_keywords = [
-        "safe",
-        "safety",
-        "danger",
-        "dangerous",
-        "risk",
-        "monsoon",
-        "rain",
-        "rainy",
-        "weather",
-        "storm",
-        "accident",
-        "emergency",
-        "wild animal",
-        "wild animals",
-        "snake",
-        "snakes",
-        "injury",
-        "injured",
-        "medical",
-        "rescue",
-        "rescue team",
-    ]
-
-    if any(
-        keyword in message
-        for keyword in safety_keywords
-    ):
-
-        return {
-            "trail_type": "safety",
-        }
-
-    # =====================================================
-    # TRAIL INFORMATION
-    # =====================================================
-
-    trail_info_keywords = [
-        "route",
-        "distance",
-        "location",
-        "where",
-        "how long",
-        "time",
-        "trail",
-        "trek",
-        "hike",
-        "mountain",
-        "waterfall",
-        "summit",
-        "peak",
-        "elevation",
-        "altitude",
-        "height",
-        "starting point",
-        "start point",
-        "base",
-        "base point",
-        "entry",
-        "entry fee",
-        "best time",
-        "best season",
-        "season",
-        "opening",
-        "closed",
-        "hours",
-    ]
-
-    if any(
-        keyword in message
-        for keyword in trail_info_keywords
-    ):
-
-        return {
-            "trail_type": "trail_info",
-        }
-
-    return {
-        "trail_type": "general_hiking",
-    }
 
 
 # =========================================================
@@ -515,21 +685,48 @@ def analyze_trail_node(state: State):
 
 def route_message(state: State):
 
-    return state["category"]
+    category = state["category"]
+    trail_type = state["trail_type"]
 
+    print(
+        "[HIKING ROUTER]"
+        f" category={category}"
+        f" trail_type={trail_type}"
+    )
 
-def route_trail(state: State):
+    # -----------------------------------------------------
+    # TRAIL
+    # -----------------------------------------------------
 
-    return state["trail_type"]
+    if category == "trail":
+
+        # IMPORTANT:
+        # Route using trail_type.
+        return trail_type
+
+    # -----------------------------------------------------
+    # GENERAL
+    # -----------------------------------------------------
+
+    if category == "general":
+
+        return "general"
+
+    # -----------------------------------------------------
+    # REJECT
+    # -----------------------------------------------------
+
+    return "reject"
 
 
 # =========================================================
-# COMMON STREAMING LLM FUNCTION
+# STREAM LLM RESPONSE
 # =========================================================
 
 async def stream_llm_response(
     state: State,
     system_prompt: str,
+    stream_context: StreamContext,
 ):
 
     messages = conversation_prompt(
@@ -537,49 +734,192 @@ async def stream_llm_response(
         system_prompt,
     )
 
+    print(
+        "[HIKING LLM]"
+        f" Starting {MODEL}"
+    )
+
     full_response = ""
 
-    async for chunk in llm.astream(messages):
+    guardrail_buffer = ""
 
-        if not chunk.content:
-            continue
+    try:
 
-        if isinstance(chunk.content, str):
+        response = await acompletion(
+            model=MODEL,
+            messages=messages,
+            api_key=API_KEY,
+            api_base=API_BASE,
+            temperature=0,
+            stream=True,
+        )
 
-            text = chunk.content
+        # =================================================
+        # STREAM
+        # =================================================
 
-        else:
+        async for chunk in response:
 
-            text = str(chunk.content)
+            if not chunk.choices:
+                continue
 
-        full_response += text
+            delta = chunk.choices[0].delta
 
-    return {
-        "response": full_response,
+            text = delta.content or ""
 
-        "messages": [
-            AIMessage(content=full_response)
-        ],
-    }
+            if not text:
+                continue
+
+            full_response += text
+
+            guardrail_buffer += text
+
+            # ---------------------------------------------
+            # Incremental output guardrail
+            # ---------------------------------------------
+
+            if len(guardrail_buffer) >= GUARDRAIL_CHECK_SIZE:
+
+                result = validate_output(
+                    guardrail_buffer
+                )
+
+                if not result["allowed"]:
+
+                    guardrail_message = result["message"]
+
+                    print(
+                        "[HIKING OUTPUT GUARDRAIL]"
+                        " BLOCKED"
+                    )
+
+                    await send_sse_event(
+                        stream_context,
+                        "guardrail_block",
+                        guardrail="output",
+                        content=guardrail_message,
+                    )
+
+                    return {
+                        "response": guardrail_message,
+                        "output_allowed": False,
+                        "output_guardrail_message":
+                            guardrail_message,
+                        "messages": [
+                            AIMessage(
+                                content=guardrail_message
+                            )
+                        ],
+                    }
+
+                guardrail_buffer = ""
+
+            # ---------------------------------------------
+            # Send chunk
+            # ---------------------------------------------
+
+            await send_sse_event(
+                stream_context,
+                "chunk",
+                source="llm",
+                content=text,
+            )
+
+            await asyncio.sleep(0)
+
+        # =================================================
+        # FINAL OUTPUT GUARDRAIL
+        # =================================================
+
+        final_result = validate_output(
+            full_response
+        )
+
+        if not final_result["allowed"]:
+
+            guardrail_message = final_result["message"]
+
+            print(
+                "[HIKING OUTPUT GUARDRAIL]"
+                " FINAL BLOCK"
+            )
+
+            await send_sse_event(
+                stream_context,
+                "guardrail_block",
+                guardrail="output",
+                content=guardrail_message,
+            )
+
+            return {
+                "response": guardrail_message,
+                "output_allowed": False,
+                "output_guardrail_message":
+                    guardrail_message,
+                "messages": [
+                    AIMessage(
+                        content=guardrail_message
+                    )
+                ],
+            }
+
+        # =================================================
+        # COMPLETE
+        # =================================================
+
+        print(
+            "[HIKING LLM]"
+            f" Completed response length={len(full_response)}"
+        )
+
+        return {
+            "response": full_response,
+            "output_allowed": True,
+            "output_guardrail_message": "",
+            "messages": [
+                AIMessage(
+                    content=full_response
+                )
+            ],
+        }
+
+    except Exception as exc:
+
+        print(
+            f"[HIKING LLM] Error: {exc}"
+        )
+
+        await send_sse_event(
+            stream_context,
+            "error",
+            message=str(exc),
+        )
+
+        raise
 
 
 # =========================================================
 # TRAIL RESPONSE
 # =========================================================
 
-async def trail_response(state: State):
+async def trail_response(
+    state: State,
+    runtime: Runtime[StreamContext],
+):
+
+    print("[HIKING NODE] trail")
 
     return await stream_llm_response(
         state,
         """
 You are TrailMate, a hiking trail assistant.
 
-Use the entire conversation history to understand
-the user's current question.
+Use the entire conversation history.
 
 Answer the user's hiking-related question.
 
 Focus on:
+
 - trail information
 - route
 - distance
@@ -589,19 +929,27 @@ Focus on:
 - best season
 - general trail details
 
-If the user refers to:
-"it", "that trail", "there", "this place", etc.,
+If the user says:
+
+- it
+- that trail
+- there
+- this place
+- this trek
+
 use previous conversation context.
 
 Be concise and helpful.
 
 IMPORTANT:
+
 - Do not answer unrelated questions.
 - If you don't know a specific fact, say you are not certain.
 - Do not invent exact trail information.
 - Do not pretend to have live weather or trail conditions.
 - Do not make up opening hours, prices, distances, or elevations.
 """,
+        runtime.context,
     )
 
 
@@ -609,7 +957,12 @@ IMPORTANT:
 # DIFFICULTY RESPONSE
 # =========================================================
 
-async def difficulty_response(state: State):
+async def difficulty_response(
+    state: State,
+    runtime: Runtime[StreamContext],
+):
+
+    print("[HIKING NODE] difficulty")
 
     return await stream_llm_response(
         state,
@@ -621,6 +974,7 @@ Use the entire conversation history.
 Answer the user's question about hiking difficulty.
 
 Explain when relevant:
+
 - difficulty level
 - fitness required
 - terrain
@@ -632,12 +986,14 @@ Explain when relevant:
 Be concise and practical.
 
 IMPORTANT:
+
 - Do not answer unrelated questions.
 - Do not invent exact measurements or facts.
 - If the trail is unknown, clearly say difficulty
   depends on the specific trail.
 - Do not claim exact trail conditions without reliable data.
 """,
+        runtime.context,
     )
 
 
@@ -645,20 +1001,32 @@ IMPORTANT:
 # EQUIPMENT RESPONSE
 # =========================================================
 
-async def equipment_response(state: State):
+async def equipment_response(
+    state: State,
+    runtime: Runtime[StreamContext],
+):
+
+    print("[HIKING NODE] equipment")
 
     return await stream_llm_response(
         state,
         """
 You are TrailMate, a hiking equipment assistant.
 
-Use the entire conversation history to understand
-the trail, duration, difficulty, weather, and
-other relevant context.
+Use the entire conversation history.
 
 Answer the user's question about hiking equipment.
 
+Consider:
+
+- trail
+- duration
+- difficulty
+- weather
+- terrain
+
 Recommend practical items such as:
+
 - hiking shoes
 - water
 - backpack
@@ -669,15 +1037,15 @@ Recommend practical items such as:
 - flashlight/headlamp
 - trekking poles when useful
 
-Consider trail, weather, duration, and difficulty.
-
 Be concise and practical.
 
 IMPORTANT:
+
 - Do not answer unrelated questions.
 - Do not recommend unnecessary equipment.
 - Do not invent specific trail conditions.
 """,
+        runtime.context,
     )
 
 
@@ -685,7 +1053,12 @@ IMPORTANT:
 # SAFETY RESPONSE
 # =========================================================
 
-async def safety_response(state: State):
+async def safety_response(
+    state: State,
+    runtime: Runtime[StreamContext],
+):
+
+    print("[HIKING NODE] safety")
 
     return await stream_llm_response(
         state,
@@ -697,6 +1070,7 @@ Use the entire conversation history.
 Answer the user's hiking safety question.
 
 Focus on:
+
 - weather awareness
 - staying on marked trails
 - sufficient water
@@ -711,12 +1085,14 @@ If conditions are dangerous, prioritize safety.
 Be concise and practical.
 
 IMPORTANT:
+
 - Do not answer unrelated questions.
 - Do not encourage dangerous behavior.
 - Do not invent specific weather or trail conditions.
 - If there is immediate danger, recommend contacting
   local emergency services or appropriate authorities.
 """,
+        runtime.context,
     )
 
 
@@ -724,7 +1100,12 @@ IMPORTANT:
 # PLANNING RESPONSE
 # =========================================================
 
-async def planning_response(state: State):
+async def planning_response(
+    state: State,
+    runtime: Runtime[StreamContext],
+):
+
+    print("[HIKING NODE] planning")
 
     return await stream_llm_response(
         state,
@@ -743,6 +1124,7 @@ Use information already provided by the user
 and previous conversation.
 
 If information is missing:
+
 - make reasonable general assumptions
 - mention important assumptions
 - continue creating the plan
@@ -763,6 +1145,7 @@ Include:
 
 Keep the plan concise and practical.
 """,
+        runtime.context,
     )
 
 
@@ -770,7 +1153,12 @@ Keep the plan concise and practical.
 # GENERAL HIKING RESPONSE
 # =========================================================
 
-async def general_hiking_response(state: State):
+async def general_hiking_response(
+    state: State,
+    runtime: Runtime[StreamContext],
+):
+
+    print("[HIKING NODE] general_hiking")
 
     return await stream_llm_response(
         state,
@@ -782,6 +1170,7 @@ Use the entire conversation history.
 Answer the user's hiking-related question.
 
 The question does not clearly fall into:
+
 - trail information
 - difficulty
 - equipment
@@ -793,17 +1182,30 @@ Give a useful general hiking answer.
 Be concise and friendly.
 
 IMPORTANT:
-Only discuss hiking, trekking, trails, mountains,
-outdoor preparation, or closely related topics.
+
+Only discuss:
+
+- hiking
+- trekking
+- trails
+- mountains
+- outdoor preparation
+- closely related topics
 """,
+        runtime.context,
     )
 
 
 # =========================================================
-# GENERAL TEMPLATE
+# GENERAL RESPONSE
 # =========================================================
 
-def general_response(state: State):
+async def general_response(
+    state: State,
+    runtime: Runtime[StreamContext],
+):
+
+    print("[HIKING NODE] general")
 
     response = (
         "Hello! I'm TrailMate. "
@@ -812,20 +1214,35 @@ def general_response(state: State):
         "difficulty, and safety."
     )
 
+    await send_sse_event(
+        runtime.context,
+        "chunk",
+        source="system",
+        content=response,
+    )
+
     return {
         "response": response,
-
+        "output_allowed": True,
+        "output_guardrail_message": "",
         "messages": [
-            AIMessage(content=response)
+            AIMessage(
+                content=response
+            )
         ],
     }
 
 
 # =========================================================
-# REJECT TEMPLATE
+# REJECT RESPONSE
 # =========================================================
 
-def reject_response(state: State):
+async def reject_response(
+    state: State,
+    runtime: Runtime[StreamContext],
+):
+
+    print("[HIKING NODE] reject")
 
     response = (
         "I'm sorry, but I can only help with "
@@ -833,11 +1250,21 @@ def reject_response(state: State):
         "equipment, difficulty, and safety."
     )
 
+    await send_sse_event(
+        runtime.context,
+        "chunk",
+        source="guardrail",
+        content=response,
+    )
+
     return {
         "response": response,
-
+        "output_allowed": True,
+        "output_guardrail_message": "",
         "messages": [
-            AIMessage(content=response)
+            AIMessage(
+                content=response
+            )
         ],
     }
 
@@ -846,77 +1273,25 @@ def reject_response(state: State):
 # OUTPUT GUARDRAIL
 # =========================================================
 
-def output_guardrail_node(state: State):
+def output_guardrail_node(
+    state: State,
+):
 
     response = state.get(
         "response",
         "",
     )
 
-    # -----------------------------------------------------
-    # Empty response
-    # -----------------------------------------------------
+    result = validate_output(response)
 
-    if not response.strip():
-
-        return {
-            "output_allowed": False,
-
-            "output_guardrail_message": (
-                "The assistant could not generate "
-                "a valid response."
-            ),
-        }
-
-    # -----------------------------------------------------
-    # Maximum output length
-    # -----------------------------------------------------
-
-    if len(response) > 20000:
-
-        return {
-            "output_allowed": False,
-
-            "output_guardrail_message": (
-                "The generated response was too long."
-            ),
-        }
-
-    # -----------------------------------------------------
-    # Basic forbidden output checks
-    # -----------------------------------------------------
-
-    blocked_patterns = [
-        "ignore previous instructions",
-        "ignore all previous instructions",
-        "system prompt",
-        "api key",
-        "sk-",
-    ]
-
-    lower_response = response.lower()
-
-    for pattern in blocked_patterns:
-
-        if pattern in lower_response:
-
-            return {
-                "output_allowed": False,
-
-                "output_guardrail_message": (
-                    "The generated response failed "
-                    "the output safety check."
-                ),
-            }
-
-    # -----------------------------------------------------
-    # Allowed
-    # -----------------------------------------------------
+    print(
+        "[HIKING OUTPUT GUARDRAIL]"
+        f" allowed={result['allowed']}"
+    )
 
     return {
-        "output_allowed": True,
-
-        "output_guardrail_message": "",
+        "output_allowed": result["allowed"],
+        "output_guardrail_message": result["message"],
     }
 
 
@@ -924,7 +1299,9 @@ def output_guardrail_node(state: State):
 # OUTPUT GUARDRAIL ROUTER
 # =========================================================
 
-def route_output_guardrail(state: State):
+def route_output_guardrail(
+    state: State,
+):
 
     if state["output_allowed"]:
         return "allow"
@@ -936,15 +1313,26 @@ def route_output_guardrail(state: State):
 # OUTPUT GUARDRAIL BLOCK
 # =========================================================
 
-def output_guardrail_blocked(state: State):
+async def output_guardrail_blocked(
+    state: State,
+    runtime: Runtime[StreamContext],
+):
 
     response = state["output_guardrail_message"]
 
+    await send_sse_event(
+        runtime.context,
+        "guardrail_block",
+        guardrail="output",
+        content=response,
+    )
+
     return {
         "response": response,
-
         "messages": [
-            AIMessage(content=response)
+            AIMessage(
+                content=response
+            )
         ],
     }
 
@@ -957,7 +1345,7 @@ workflow = StateGraph(State)
 
 
 # =========================================================
-# ADD INPUT GUARDRAIL
+# INPUT
 # =========================================================
 
 workflow.add_node(
@@ -972,7 +1360,7 @@ workflow.add_node(
 
 
 # =========================================================
-# ADD CLASSIFICATION
+# CLASSIFIER
 # =========================================================
 
 workflow.add_node(
@@ -980,18 +1368,13 @@ workflow.add_node(
     classify_node,
 )
 
-workflow.add_node(
-    "analyze_trail",
-    analyze_trail_node,
-)
-
 
 # =========================================================
-# ADD RESPONSE NODES
+# RESPONSE NODES
 # =========================================================
 
 workflow.add_node(
-    "trail",
+    "trail_info",
     trail_response,
 )
 
@@ -1032,7 +1415,7 @@ workflow.add_node(
 
 
 # =========================================================
-# ADD OUTPUT GUARDRAIL
+# OUTPUT GUARDRAIL
 # =========================================================
 
 workflow.add_node(
@@ -1057,7 +1440,7 @@ workflow.add_edge(
 
 
 # =========================================================
-# INPUT GUARDRAIL ROUTING
+# INPUT ROUTING
 # =========================================================
 
 workflow.add_conditional_edges(
@@ -1081,14 +1464,19 @@ workflow.add_edge(
 
 
 # =========================================================
-# MAIN CLASSIFICATION
+# CLASSIFIER ROUTING
 # =========================================================
 
 workflow.add_conditional_edges(
     "classify",
     route_message,
     {
-        "trail": "analyze_trail",
+        "trail_info": "trail_info",
+        "difficulty": "difficulty",
+        "equipment": "equipment",
+        "safety": "safety",
+        "planning": "planning",
+        "general_hiking": "general_hiking",
         "general": "general",
         "reject": "reject",
     },
@@ -1096,29 +1484,11 @@ workflow.add_conditional_edges(
 
 
 # =========================================================
-# HIKING ROUTING
-# =========================================================
-
-workflow.add_conditional_edges(
-    "analyze_trail",
-    route_trail,
-    {
-        "trail_info": "trail",
-        "difficulty": "difficulty",
-        "equipment": "equipment",
-        "safety": "safety",
-        "planning": "planning",
-        "general_hiking": "general_hiking",
-    },
-)
-
-
-# =========================================================
-# ALL RESPONSE NODES -> OUTPUT GUARDRAIL
+# RESPONSE -> OUTPUT GUARDRAIL
 # =========================================================
 
 workflow.add_edge(
-    "trail",
+    "trail_info",
     "output_guardrail",
 )
 
@@ -1199,7 +1569,7 @@ hiking_graph = workflow.compile(
 
 
 # =========================================================
-# CREATE NEW CHAT
+# NEW CHAT
 # =========================================================
 
 @router.post("/new-chat")
@@ -1250,6 +1620,12 @@ async def send_message(
         )
 
     # =====================================================
+    # STREAM CONTEXT
+    # =====================================================
+
+    stream_context = StreamContext()
+
+    # =====================================================
     # CONFIG
     # =====================================================
 
@@ -1260,7 +1636,7 @@ async def send_message(
     }
 
     # =====================================================
-    # INPUT
+    # INPUT STATE
     # =====================================================
 
     input_state = {
@@ -1274,6 +1650,8 @@ async def send_message(
         "category": "reject",
 
         "trail_type": "general_hiking",
+
+        "classification_confidence": 0.0,
 
         "response": "",
 
@@ -1290,276 +1668,121 @@ async def send_message(
     # SSE GENERATOR
     # =====================================================
 
-    async def event_generator() -> AsyncGenerator[str, None]:
+    async def event_generator():
 
         request_start = time.perf_counter()
 
-        first_token_time = None
-
-        chunk_count = 0
-
-        llm_streamed = False
+        graph_task = asyncio.create_task(
+            hiking_graph.ainvoke(
+                input_state,
+                config=config,
+                context=stream_context,
+            )
+        )
 
         try:
 
-            # =================================================
-            # LANGGRAPH STREAM
-            # =================================================
+            while True:
 
-            async for event in hiking_graph.astream_events(
-                input_state,
-                config=config,
-                version="v2",
-            ):
+                # -----------------------------------------
+                # If graph crashes before producing an event
+                # -----------------------------------------
 
-                event_type = event["event"]
+                if graph_task.done() and stream_context.queue.empty():
 
-                event_name = event.get(
-                    "name",
-                    "",
-                )
+                    exception = graph_task.exception()
 
-                # =============================================
-                # LLM TOKEN
-                # =============================================
+                    if exception:
 
-                if event_type == "on_chat_model_stream":
+                        raise exception
 
-                    chunk = event["data"]["chunk"]
+                    break
 
-                    content = chunk.content
+                try:
 
-                    if not content:
-                        continue
+                    event = await asyncio.wait_for(
+                        stream_context.queue.get(),
+                        timeout=0.5,
+                    )
 
-                    if isinstance(
-                        content,
-                        str,
-                    ):
+                except asyncio.TimeoutError:
 
-                        text = content
+                    if graph_task.done():
 
-                    else:
+                        exception = graph_task.exception()
 
-                        text = str(content)
+                        if exception:
+                            raise exception
 
-                    # -----------------------------------------
-                    # TTFT
-                    # -----------------------------------------
+                        break
 
-                    if first_token_time is None:
+                    continue
 
-                        first_token_time = (
-                            time.perf_counter()
-                        )
+                event_type = event["type"]
 
-                        ttft = (
-                            first_token_time
-                            - request_start
-                        )
+                # =========================================
+                # CLASSIFICATION
+                # =========================================
 
-                        print(
-                            f"[HIKING] "
-                            f"TTFT: {ttft:.3f}s"
-                        )
+                if event_type == "classification":
 
-                    # -----------------------------------------
-                    # SEND IMMEDIATELY
-                    # -----------------------------------------
+                    yield (
+                        "event: classification\n"
+                        f"data: {json.dumps(event)}\n\n"
+                    )
 
-                    llm_streamed = True
+                # =========================================
+                # LLM CHUNK
+                # =========================================
 
-                    chunk_count += 1
-
-                    payload = {
-                        "type": "chunk",
-                        "source": "llm",
-                        "content": text,
-                    }
+                elif event_type == "chunk":
 
                     yield (
                         "event: chunk\n"
-                        f"data: {json.dumps(payload)}\n\n"
+                        f"data: {json.dumps(event)}\n\n"
                     )
 
-                # =============================================
-                # INPUT GUARDRAIL BLOCK
-                # =============================================
+                # =========================================
+                # GUARDRAIL
+                # =========================================
 
-                elif (
-                    event_type == "on_chain_end"
-                    and event_name
-                    == "input_guardrail_blocked"
-                ):
-
-                    output = event["data"].get(
-                        "output"
-                    )
-
-                    if not output:
-                        continue
-
-                    text = output.get(
-                        "response",
-                        "",
-                    )
-
-                    if not text:
-                        continue
-
-                    payload = {
-                        "type": "guardrail_block",
-                        "guardrail": "input",
-                        "content": text,
-                    }
+                elif event_type == "guardrail_block":
 
                     yield (
                         "event: guardrail_block\n"
-                        f"data: {json.dumps(payload)}\n\n"
+                        f"data: {json.dumps(event)}\n\n"
                     )
 
-                # =============================================
-                # TEMPLATE RESPONSE
-                # =============================================
+                # =========================================
+                # ERROR
+                # =========================================
 
-                elif (
-                    event_type == "on_chain_end"
-                    and event_name in {
-                        "general",
-                        "reject",
-                    }
-                ):
-
-                    # These are non-LLM template responses.
-
-                    if llm_streamed:
-                        continue
-
-                    output = event["data"].get(
-                        "output"
-                    )
-
-                    if not output:
-                        continue
-
-                    text = output.get(
-                        "response",
-                        "",
-                    )
-
-                    if not text:
-                        continue
-
-                    payload = {
-                        "type": "chunk",
-                        "source": "template",
-                        "content": text,
-                    }
+                elif event_type == "error":
 
                     yield (
-                        "event: chunk\n"
-                        f"data: {json.dumps(payload)}\n\n"
+                        "event: error\n"
+                        f"data: {json.dumps(event)}\n\n"
                     )
 
-                # =============================================
-                # OUTPUT GUARDRAIL
-                # =============================================
+                    break
 
-                elif (
-                    event_type == "on_chain_end"
-                    and event_name
-                    == "output_guardrail"
-                ):
+                # =========================================
+                # STREAM DONE
+                # =========================================
 
-                    output = event["data"].get(
-                        "output"
-                    )
-
-                    if not output:
-                        continue
-
-                    allowed = output.get(
-                        "output_allowed",
-                        True,
-                    )
-
-                    message = output.get(
-                        "output_guardrail_message",
-                        "",
-                    )
-
-                    # -----------------------------------------
-                    # OUTPUT PASSED
-                    # -----------------------------------------
-
-                    if allowed:
-
-                        payload = {
-                            "type": "output_guardrail",
-                            "status": "passed",
-                        }
-
-                        yield (
-                            "event: output_guardrail\n"
-                            f"data: {json.dumps(payload)}\n\n"
-                        )
-
-                    # -----------------------------------------
-                    # OUTPUT FAILED
-                    # -----------------------------------------
-
-                    else:
-
-                        payload = {
-                            "type": "output_guardrail",
-                            "status": "blocked",
-                            "message": message,
-                        }
-
-                        yield (
-                            "event: output_guardrail\n"
-                            f"data: {json.dumps(payload)}\n\n"
-                        )
-
-                # =============================================
-                # OUTPUT GUARDRAIL BLOCK RESPONSE
-                # =============================================
-
-                elif (
-                    event_type == "on_chain_end"
-                    and event_name
-                    == "output_guardrail_blocked"
-                ):
-
-                    output = event["data"].get(
-                        "output"
-                    )
-
-                    if not output:
-                        continue
-
-                    text = output.get(
-                        "response",
-                        "",
-                    )
-
-                    if not text:
-                        continue
-
-                    payload = {
-                        "type": "guardrail_block",
-                        "guardrail": "output",
-                        "content": text,
-                    }
+                elif event_type == "stream_done":
 
                     yield (
-                        "event: guardrail_block\n"
-                        f"data: {json.dumps(payload)}\n\n"
+                        "event: stream_done\n"
+                        f"data: {json.dumps(event)}\n\n"
                     )
+                    continue
 
             # =================================================
-            # COMPLETE
+            # WAIT FOR COMPLETE GRAPH
             # =================================================
+
+            result = await graph_task
 
             total_time = (
                 time.perf_counter()
@@ -1567,27 +1790,47 @@ async def send_message(
             )
 
             print(
-                f"[HIKING] "
-                f"Completed in {total_time:.3f}s | "
-                f"chunks={chunk_count}"
+                "[HIKING]"
+                f" Completed in {total_time:.3f}s"
+            )
+
+            print(
+                "[HIKING]"
+                f" Final category={result.get('category')}"
+                f" trail_type={result.get('trail_type')}"
+                f" confidence="
+                f"{result.get('classification_confidence', 0):.2f}"
             )
 
             # =================================================
-            # DONE
+            # FINAL DONE
             # =================================================
-
-            payload = {
-                "type": "done",
-            }
 
             yield (
                 "event: done\n"
-                f"data: {json.dumps(payload)}\n\n"
+                f"data: {json.dumps({
+                    'type': 'done',
+                    'category': result.get('category'),
+                    'trail_type': result.get('trail_type'),
+                    'confidence': result.get(
+                        'classification_confidence',
+                        0.0,
+                    ),
+                })}\n\n"
             )
 
-        # =====================================================
-        # ERROR
-        # =====================================================
+        except asyncio.CancelledError:
+
+            if not graph_task.done():
+
+                graph_task.cancel()
+
+                try:
+                    await graph_task
+                except asyncio.CancelledError:
+                    pass
+
+            raise
 
         except Exception as exc:
 
@@ -1595,18 +1838,25 @@ async def send_message(
                 f"[HIKING] Streaming error: {exc}"
             )
 
-            payload = {
-                "type": "error",
-                "message": str(exc),
-            }
+            if not graph_task.done():
+
+                graph_task.cancel()
+
+                try:
+                    await graph_task
+                except asyncio.CancelledError:
+                    pass
 
             yield (
                 "event: error\n"
-                f"data: {json.dumps(payload)}\n\n"
+                f"data: {json.dumps({
+                    'type': 'error',
+                    'message': str(exc),
+                })}\n\n"
             )
 
     # =====================================================
-    # SSE
+    # SSE RESPONSE
     # =====================================================
 
     return StreamingResponse(

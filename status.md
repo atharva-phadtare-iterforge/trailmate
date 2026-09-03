@@ -25,3 +25,20 @@
 - Ensured at least one path in the graph returns a real, model-generated response while the other paths can remain templated.
 - Added Streaming SSE to the API endpoint.
 - Implemented token-by-token streaming so generated responses are delivered progressively to the client.
+
+## Day 4
+
+- Studied guardrails and implemented simple guardrails using word-pattern matching.
+- Studied streaming with `ChatOpenAI`, `astream`, and `astream_events`.
+- Studied LangSmith Studio and how it can be used to inspect and debug LangGraph workflows.
+- Studied how PostgreSQL can be used as a persistent store and checkpoint backend for LangGraph.
+- Explored how persistence and streaming fit into the overall LangGraph workflow.
+
+## Day 5
+
+- Implemented regex-based input and output guardrails to validate and filter messages.
+- Implemented streaming of LLM responses using LiteLLM's `acompletion`.
+- Integrated asynchronous LLM streaming into the existing API workflow.
+- Implemented LLM-based message classification instead of relying only on rule-based classification.
+- Added a model confidence score to the classification result for better understanding of the model's prediction.
+- Tested the classification and guardrails with different inputs and outputs to ensure the workflow behaves as expected.

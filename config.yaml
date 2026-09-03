@@ -1,5 +1,4 @@
 model_list:
-
   - model_name: hiking-small
     litellm_params:
       model: ollama/llama3.2:3b
@@ -8,5 +7,36 @@ model_list:
 router_settings:
   routing_strategy: simple-shuffle
 
+guardrails:
+  - guardrail_name: presidio-pii
+    litellm_params:
+      guardrail: presidio
+
+      # Only inspect/mask incoming user messages
+      mode: "pre_call"
+
+      # Explicit Docker service URLs
+      presidio_analyzer_api_base: "http://presidio-analyzer:3000"
+      presidio_anonymizer_api_base: "http://presidio-anonymizer:3000"
+
+      presidio_language: "en"
+
+      pii_entities_config:
+        EMAIL_ADDRESS: "MASK"
+        PHONE_NUMBER: "MASK"
+        CREDIT_CARD: "MASK"
+        US_SSN: "MASK"
+
+      presidio_score_thresholds:
+        EMAIL_ADDRESS: 0.6
+        PHONE_NUMBER: 0.6
+        CREDIT_CARD: 0.8
+        US_SSN: 0.6
+
+      fail_on_error: true
+
+    default_on: true
+
 litellm_settings:
   drop_params: true
+  master_key: sk-1234

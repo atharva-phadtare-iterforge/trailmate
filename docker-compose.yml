@@ -1,5 +1,4 @@
 services:
-
   litellm:
     image: docker.litellm.ai/berriai/litellm-database:latest
 
@@ -13,6 +12,9 @@ services:
       STORE_MODEL_IN_DB: "True"
       OLLAMA_HOST: http://host.docker.internal:11434
 
+      PRESIDIO_ANALYZER_API_BASE: http://presidio-analyzer:3000
+      PRESIDIO_ANONYMIZER_API_BASE: http://presidio-anonymizer:3000
+
     volumes:
       - ./config.yaml:/app/config.yaml
 
@@ -23,6 +25,21 @@ services:
     depends_on:
       db:
         condition: service_healthy
+      presidio-analyzer:
+        condition: service_started
+      presidio-anonymizer:
+        condition: service_started
+
+  presidio-analyzer:
+    image: mcr.microsoft.com/presidio-analyzer:latest
+    ports:
+      - "3000:3000"
+
+  presidio-anonymizer:
+    image: mcr.microsoft.com/presidio-anonymizer:latest
+    ports:
+      - "3001:3000"
+
 
   db:
     image: postgres:16
