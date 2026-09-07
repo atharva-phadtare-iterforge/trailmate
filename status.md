@@ -42,3 +42,24 @@
 - Implemented LLM-based message classification instead of relying only on rule-based classification.
 - Added a model confidence score to the classification result for better understanding of the model's prediction.
 - Tested the classification and guardrails with different inputs and outputs to ensure the workflow behaves as expected.
+
+
+## Phase 2 — Applied Vector Search
+
+### Day 1 — Local Embedding Service
+- Learned the basics of text embeddings and semantic similarity.
+- Created a separate FastAPI embedding service using `sentence-transformers`.
+- Used the `all-MiniLM-L6-v2` model to convert text into 384-dimensional vectors.
+- Separated the embedding model, service logic, and API routes.
+- Created an `/embed` endpoint that accepts text and returns its embedding vector.
+
+### Day 2 — Semantic Search with PostgreSQL & pgvector
+- Learned how PostgreSQL and pgvector can be used for vector similarity search.
+- Created a separate FastAPI search service.
+- Added centralized PostgreSQL database configuration and connection handling.
+- Enabled the `vector` extension in PostgreSQL.
+- Implemented service-to-service communication between the Search service and Embedder service.
+- Converted search queries into embeddings through the Embedder service.
+- Implemented cosine-distance similarity search using pgvector's `<=>` operator.
+- Separated the Search service into models, service logic, and routes.
+- Successfully tested vector insertion and similarity search against PostgreSQL.
