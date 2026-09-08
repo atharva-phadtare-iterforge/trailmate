@@ -10,7 +10,6 @@ from ..config import (
     DATABASE_PASSWORD,
 )
 
-
 def get_connection():
     connection = psycopg.connect(
         host=DATABASE_HOST,
