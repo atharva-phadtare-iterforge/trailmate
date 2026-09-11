@@ -3781,7 +3781,9 @@ dependencies = [
     { name = "psycopg", extra = ["binary"] },
     { name = "pydantic" },
     { name = "requests" },
+    { name = "scipy" },
     { name = "sentence-transformers" },
+    { name = "tiktoken" },
     { name = "uvicorn" },
 ]
 
@@ -3798,7 +3800,9 @@ requires-dist = [
     { name = "psycopg", extras = ["binary"], specifier = ">=3.3.5" },
     { name = "pydantic", specifier = ">=2.13.4" },
     { name = "requests", specifier = ">=2.34.2" },
+    { name = "scipy", specifier = ">=1.18.1" },
     { name = "sentence-transformers", specifier = ">=6.0.1" },
+    { name = "tiktoken", specifier = ">=0.14.0" },
     { name = "uvicorn", specifier = ">=0.52.4" },
 ]
 

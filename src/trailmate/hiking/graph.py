@@ -5,10 +5,11 @@ from typing import (
 )
 
 from uuid import uuid4
-
+import tiktoken
 import asyncio
 import json
 import time
+from ..init.service_client import search_trails
 
 from fastapi import (
     APIRouter,
@@ -107,6 +108,7 @@ class State(TypedDict):
     input_guardrail_message: str
     output_allowed: bool
     output_guardrail_message: str
+    retrieved_trails: list[dict]
 
 # =========================================================
 # REQUEST MODEL
@@ -139,7 +141,80 @@ async def send_sse_event(
         }
     )
 
+# =========================================================
+# JAVA TRAIL RETRIEVAL
+# =========================================================
 
+async def retrieve_trails_node(
+    state: State,
+    runtime: Runtime[StreamContext],
+):
+
+    query = get_latest_message(state)
+
+    print(
+        "[HIKING RETRIEVAL]"
+        f" Searching Java service for: {query}"
+    )
+
+    try:
+
+        results = await asyncio.to_thread(
+            search_trails,
+            query,
+            3,
+        )
+
+        # -------------------------------------------------
+        # Keep only information that the LLM needs
+        # -------------------------------------------------
+
+        retrieved_trails = []
+
+        for result in results[:3]:
+
+            retrieved_trails.append(
+                {
+                    "trailId": result.get("trailId"),
+                    "trailName": result.get("trailName"),
+                    "sectionName": result.get("sectionName"),
+                    "chunkText": result.get("chunkText"),
+                }
+            )
+
+        print(
+            "[HIKING RETRIEVAL]"
+            f" Retrieved {len(retrieved_trails)} trails"
+        )
+
+        for index, trail in enumerate(
+            retrieved_trails,
+            start=1,
+        ):
+
+            print(
+                "[HIKING RETRIEVAL]"
+                f" {index}. "
+                f"{trail['trailName']} "
+                f"- {trail['sectionName']}"
+            )
+
+        return {
+            "retrieved_trails": retrieved_trails,
+        }
+
+    except Exception as exc:
+
+        print(
+            "[HIKING RETRIEVAL]"
+            f" Error: {exc}"
+        )
+
+        return {
+            "retrieved_trails": [],
+        }
+
+    
 # =========================================================
 # MESSAGE HELPERS
 # =========================================================
@@ -194,11 +269,56 @@ def conversation_prompt(
         }
     ]
 
+    # -----------------------------------------------------
+    # Conversation history
+    # -----------------------------------------------------
+
     for message in state["messages"]:
 
         messages.append(
             message_to_dict(message)
         )
+
+    # -----------------------------------------------------
+    # Retrieved trail information
+    # -----------------------------------------------------
+
+    retrieved_trails = state.get(
+        "retrieved_trails",
+        [],
+    )
+
+    if retrieved_trails:
+
+        retrieval_context = (
+            "\n\n"
+            "RETRIEVED TRAIL INFORMATION:\n"
+            "The following information was retrieved "
+            "from the TrailMate search system.\n"
+            "Use it as the source of truth for "
+            "trail-specific facts.\n"
+            "Do not invent facts that are not present "
+            "in the retrieved information.\n"
+        )
+
+        for index, trail in enumerate(
+            retrieved_trails,
+            start=1,
+        ):
+
+            retrieval_context += (
+                f"\nTrail {index}:\n"
+                f"Trail ID: "
+                f"{trail.get('trailId')}\n"
+                f"Trail Name: "
+                f"{trail.get('trailName')}\n"
+                f"Section: "
+                f"{trail.get('sectionName')}\n"
+                f"Information: "
+                f"{trail.get('chunkText')}\n"
+            )
+
+        messages[0]["content"] += retrieval_context
 
     return messages
 
@@ -1096,6 +1216,7 @@ IMPORTANT:
     )
 
 
+
 # =========================================================
 # PLANNING RESPONSE
 # =========================================================
@@ -1107,9 +1228,11 @@ async def planning_response(
 
     print("[HIKING NODE] planning")
 
-    return await stream_llm_response(
-        state,
-        """
+    # -----------------------------------------------------
+    # Planning system prompt
+    # -----------------------------------------------------
+
+    system_prompt = """
 You are TrailMate, a hiking planning assistant.
 
 Use the entire conversation history.
@@ -1144,7 +1267,63 @@ Include:
 9. Backup plan
 
 Keep the plan concise and practical.
-""",
+"""
+
+    # -----------------------------------------------------
+    # Build the EXACT messages that will be sent to LLM
+    # -----------------------------------------------------
+
+    messages = conversation_prompt(
+        state,
+        system_prompt,
+    )
+
+    # -----------------------------------------------------
+    # TIKTOKEN PRE-FLIGHT CHECK
+    # -----------------------------------------------------
+
+    try:
+
+        encoder = tiktoken.get_encoding(
+            "cl100k_base"
+        )
+
+        total_text = ""
+
+        for message in messages:
+
+            total_text += (
+                f"{message['role']}: "
+                f"{message['content']}\n"
+            )
+
+        token_count = len(
+            encoder.encode(total_text)
+        )
+
+        character_count = len(total_text)
+
+        print(
+            "[HIKING TOKENS]"
+            f" planning prompt"
+            f" characters={character_count}"
+            f" estimated_tokens={token_count}"
+        )
+
+    except Exception as exc:
+
+        print(
+            "[HIKING TOKENS]"
+            f" Token counting failed: {exc}"
+        )
+
+    # -----------------------------------------------------
+    # Call the existing streaming function
+    # -----------------------------------------------------
+
+    return await stream_llm_response(
+        state,
+        system_prompt,
         runtime.context,
     )
 
@@ -1368,6 +1547,10 @@ workflow.add_node(
     classify_node,
 )
 
+workflow.add_node(
+    "retrieve_trails",
+    retrieve_trails_node,
+)
 
 # =========================================================
 # RESPONSE NODES
@@ -1471,14 +1654,28 @@ workflow.add_conditional_edges(
     "classify",
     route_message,
     {
+        "trail_info": "retrieve_trails",
+        "difficulty": "retrieve_trails",
+        "equipment": "retrieve_trails",
+        "safety": "retrieve_trails",
+        "planning": "retrieve_trails",
+        "general_hiking": "retrieve_trails",
+
+        "general": "general",
+        "reject": "reject",
+    },
+)
+
+workflow.add_conditional_edges(
+    "retrieve_trails",
+    lambda state: state["trail_type"],
+    {
         "trail_info": "trail_info",
         "difficulty": "difficulty",
         "equipment": "equipment",
         "safety": "safety",
         "planning": "planning",
         "general_hiking": "general_hiking",
-        "general": "general",
-        "reject": "reject",
     },
 )
 
@@ -1652,6 +1849,8 @@ async def send_message(
         "trail_type": "general_hiking",
 
         "classification_confidence": 0.0,
+
+        "retrieved_trails": [],
 
         "response": "",
 
