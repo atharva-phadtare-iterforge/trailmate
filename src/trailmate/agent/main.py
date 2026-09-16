@@ -59,6 +59,10 @@ async def ask(
     thread_id = hiking_thread_id or str(uuid4())
     created_thread_cookie = hiking_thread_id is None
 
+    # =========================================================
+    # INPUT GUARDRAIL
+    # =========================================================
+
     input_result = validate_input(request.message)
 
     if not input_result["allowed"]:
@@ -111,6 +115,10 @@ async def ask(
 
             answer_started_sent = False
 
+            # Collect the complete generated response so the output
+            # guardrail can validate it before the final safety event.
+            full_answer = ""
+
             async for event in trailmate_agent.astream(
                 input_state,
                 config={"configurable": {"thread_id": thread_id}},
@@ -126,6 +134,12 @@ async def ask(
                         continue
 
                     if payload.get("type") == "answer_chunk":
+                        text = payload.get("text", "")
+
+                        # Collect the complete response for the
+                        # output guardrail.
+                        full_answer += text
+
                         # Direct answers do not have a tool update before
                         # streaming, so make sure the UI gets answer_start too.
                         if not answer_started_sent:
@@ -135,7 +149,7 @@ async def ask(
                         yield sse_event(
                             {
                                 "type": "chunk",
-                                "text": payload.get("text", ""),
+                                "text": text,
                             }
                         )
                     continue
@@ -158,16 +172,22 @@ async def ask(
                     if tool_calls:
                         for tool_call in tool_calls:
                             tool_name = tool_call.get("name")
+
                             if tool_name != "search_trails_tool":
                                 continue
 
-                            query = tool_call.get("args", {}).get("query", "")
+                            query = tool_call.get("args", {}).get(
+                                "query", ""
+                            )
 
                             yield sse_event(
                                 {
                                     "type": "agent_decision",
                                     "action": "search",
-                                    "reason": "The request contains searchable trail requirements.",
+                                    "reason": (
+                                        "The request contains searchable "
+                                        "trail requirements."
+                                    ),
                                 }
                             )
 
@@ -175,7 +195,9 @@ async def ask(
                                 {
                                     "type": "tool_start",
                                     "tool": tool_name,
-                                    "detail": f"Searching TrailMate for: {query}",
+                                    "detail": (
+                                        f"Searching TrailMate for: {query}"
+                                    ),
                                 }
                             )
                     else:
@@ -183,23 +205,32 @@ async def ask(
                             {
                                 "type": "agent_decision",
                                 "action": "answer",
-                                "reason": "No TrailMate database search is needed for this request.",
+                                "reason": (
+                                    "No TrailMate database search is needed "
+                                    "for this request."
+                                ),
                             }
                         )
 
                 if "tools" in payload:
                     tool_update = payload["tools"]
+
                     if not isinstance(tool_update, dict):
                         continue
 
                     for tool_message in tool_update.get("messages", []):
-                        content = str(getattr(tool_message, "content", ""))
+                        content = str(
+                            getattr(tool_message, "content", "")
+                        )
+
                         results = []
 
                         try:
                             parsed_results = json.loads(content)
+
                             if isinstance(parsed_results, list):
                                 results = parsed_results
+
                         except json.JSONDecodeError:
                             pass
 
@@ -214,21 +245,69 @@ async def ask(
 
                         if not answer_started_sent:
                             answer_started_sent = True
-                            yield sse_event({"type": "answer_start"})
+                            yield sse_event(
+                                {"type": "answer_start"}
+                            )
+
+            # =========================================================
+            # OUTPUT GUARDRAIL
+            # =========================================================
+
+            output_result = validate_output(full_answer)
+
+            if not output_result["allowed"]:
+
+                # Tell the frontend that the generated response
+                # failed the output safety check.
+                yield sse_event(
+                    {
+                        "type": "guardrail",
+                        "status": "blocked",
+                        "reason": output_result.get(
+                            "reason",
+                            "Output safety check failed.",
+                        ),
+                    }
+                )
+
+                # Send the safe fallback message instead of
+                # continuing with the generated response.
+                yield sse_event(
+                    {
+                        "type": "chunk",
+                        "text": output_result.get(
+                            "message",
+                            "The generated response could not be displayed.",
+                        ),
+                    }
+                )
+
+            else:
+
+                # The generated response passed the actual
+                # output guardrail.
+                yield sse_event(
+                    {
+                        "type": "guardrail",
+                        "status": "passed",
+                        "detail": (
+                            "The generated response passed the "
+                            "output safety check."
+                        ),
+                    }
+                )
 
             yield sse_event({"type": "answer_end"})
-
-            # Keep the existing guardrail event contract for the UI.
-            yield sse_event(
-                {
-                    "type": "guardrail",
-                    "detail": "The generated response passed the output safety check.",
-                }
-            )
             yield sse_event({"type": "done"})
 
         except Exception as exc:
-            yield sse_event({"type": "error", "message": str(exc)})
+            yield sse_event(
+                {
+                    "type": "error",
+                    "message": str(exc),
+                }
+            )
+
             yield sse_event({"type": "done"})
 
     stream_response = StreamingResponse(
