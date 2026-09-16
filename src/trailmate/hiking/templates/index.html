@@ -5,6 +5,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>TrailMate — AI Hiking Assistant</title>
 
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+
     <link rel="stylesheet" href="/hiking/static/style.css">
 </head>
 
@@ -18,7 +22,7 @@
 
         <div class="sidebar-top">
             <div class="brand">
-                <div class="brand-icon">🥾</div>
+                <div class="brand-mark">🥾</div>
                 <div class="brand-copy">
                     <strong>TrailMate</strong>
                     <span>AI hiking assistant</span>
@@ -26,26 +30,49 @@
             </div>
 
             <button id="newChatBtn" class="new-chat-btn" type="button">
-                <span class="new-chat-icon">＋</span>
+                <svg class="icon" viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M12 5v14M5 12h14"/>
+                </svg>
                 <span>New chat</span>
             </button>
 
             <div class="sidebar-section">
-                <div class="sidebar-label">EXPLORE</div>
+                <div class="sidebar-heading">What TrailMate can do</div>
 
                 <div class="sidebar-info">
-                    <div class="sidebar-info-icon">⌕</div>
+                    <div class="sidebar-info-icon">
+                        <svg class="icon" viewBox="0 0 24 24" aria-hidden="true">
+                            <circle cx="11" cy="11" r="6"/>
+                            <path d="m20 20-4.5-4.5"/>
+                        </svg>
+                    </div>
                     <div>
-                        <strong>Trail search</strong>
-                        <span>Find trails by difficulty, scenery and more.</span>
+                        <strong>Search trails</strong>
+                        <span>Find routes by difficulty, length and scenery.</span>
                     </div>
                 </div>
 
                 <div class="sidebar-info">
-                    <div class="sidebar-info-icon">✦</div>
+                    <div class="sidebar-info-icon">
+                        <svg class="icon" viewBox="0 0 24 24" aria-hidden="true">
+                            <path d="M12 3v4M12 17v4M3 12h4M17 12h4M6 6l2.5 2.5M15.5 15.5 18 18M18 6l-2.5 2.5M8.5 15.5 6 18"/>
+                        </svg>
+                    </div>
                     <div>
-                        <strong>Smart matching</strong>
-                        <span>TrailMate checks your requirements against search results.</span>
+                        <strong>Match your needs</strong>
+                        <span>Checks every result against what you asked for.</span>
+                    </div>
+                </div>
+
+                <div class="sidebar-info">
+                    <div class="sidebar-info-icon">
+                        <svg class="icon" viewBox="0 0 24 24" aria-hidden="true">
+                            <path d="M4 18 9 7l4 7 2-3 5 7z"/>
+                        </svg>
+                    </div>
+                    <div>
+                        <strong>Show its work</strong>
+                        <span>Open any step to see what it searched and found.</span>
                     </div>
                 </div>
             </div>
@@ -54,9 +81,9 @@
         <div class="sidebar-bottom">
             <div class="connection-status">
                 <span class="status-dot"></span>
-                <span>TrailMate is ready</span>
+                <span>Connected</span>
             </div>
-            <span class="sidebar-version">AI trail search</span>
+            <span class="sidebar-version">Trail search · v2</span>
         </div>
 
     </aside>
@@ -67,106 +94,28 @@
          ========================================= -->
     <main class="main">
 
-        <!-- HEADER -->
         <header class="header">
             <div class="header-title">
                 <div class="header-mobile-icon">🥾</div>
                 <div>
                     <strong>TrailMate</strong>
-                    <span>Trail Search Assistant</span>
+                    <span>Trail search assistant</span>
                 </div>
             </div>
 
             <div class="header-status">
                 <span class="status-dot"></span>
-                Ready
+                <span id="headerStatusText">Ready</span>
             </div>
         </header>
 
 
-        <!-- =====================================
-             CHAT
-             ===================================== -->
         <div id="chatContainer" class="chat-container">
-            <div id="chatContent" class="chat-content">
-
-                <!-- WELCOME SCREEN -->
-                <section id="welcome" class="welcome">
-
-                    <div class="welcome-badge">
-                        <span>✦</span>
-                        AI-powered trail discovery
-                    </div>
-
-                    <div class="welcome-icon">
-                        🥾
-                    </div>
-
-                    <h1>
-                        Where will your next<br>
-                        <span>adventure</span> take you?
-                    </h1>
-
-                    <p>
-                        Tell TrailMate what you're looking for and
-                        I'll search the trail database for matching options.
-                    </p>
-
-                    <div class="suggestions">
-
-                        <button class="suggestion" type="button"
-                                data-query="Find me an easy trail near water">
-                            <span class="suggestion-icon">💧</span>
-                            <span>
-                                <strong>Easy &amp; near water</strong>
-                                <small>Relaxed scenery</small>
-                            </span>
-                            <span class="suggestion-arrow">→</span>
-                        </button>
-
-                        <button class="suggestion" type="button"
-                                data-query="Find me a difficult mountain trail">
-                            <span class="suggestion-icon">⛰️</span>
-                            <span>
-                                <strong>Difficult mountain trail</strong>
-                                <small>For experienced hikers</small>
-                            </span>
-                            <span class="suggestion-arrow">→</span>
-                        </button>
-
-                        <button class="suggestion" type="button"
-                                data-query="Find me a trail with waterfalls">
-                            <span class="suggestion-icon">🌊</span>
-                            <span>
-                                <strong>Trail with waterfalls</strong>
-                                <small>Waterfall views</small>
-                            </span>
-                            <span class="suggestion-arrow">→</span>
-                        </button>
-
-                        <button class="suggestion" type="button"
-                                data-query="Find me a short beginner trail">
-                            <span class="suggestion-icon">🌿</span>
-                            <span>
-                                <strong>Short beginner trail</strong>
-                                <small>Simple &amp; accessible</small>
-                            </span>
-                            <span class="suggestion-arrow">→</span>
-                        </button>
-
-                    </div>
-
-                </section>
-
-            </div>
+            <div id="chatContent" class="chat-content"></div>
         </div>
 
 
-        <!-- =====================================
-             INPUT
-             ===================================== -->
         <div class="input-area">
-
             <form id="messageForm" class="input-wrapper">
 
                 <div class="input-box">
@@ -174,806 +123,782 @@
                         id="messageInput"
                         name="message"
                         rows="1"
-                        placeholder="Ask TrailMate about a hiking trail..."
+                        placeholder="Describe the hike you're looking for…"
                         autocomplete="off"
                         aria-label="Message TrailMate"
                     ></textarea>
 
-                    <button
-                        id="sendBtn"
-                        class="send-btn"
-                        type="submit"
-                        aria-label="Send message"
-                        title="Send"
-                    >
-                        <span>↑</span>
+                    <button id="sendBtn" class="send-btn" type="submit" title="Send message">
+                        <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" style="font-size:18px">
+                            <path d="M12 19V5M6 11l6-6 6 6"/>
+                        </svg>
+                        <span class="sr-only">Send message</span>
                     </button>
                 </div>
 
                 <div class="input-footer">
-                    <span>Press <kbd>Enter</kbd> to send · <kbd>Shift</kbd> + <kbd>Enter</kbd> for a new line</span>
-                    <span>TrailMate can search trails and ask follow-up questions.</span>
+                    <span><kbd>Enter</kbd> to send · <kbd>Shift</kbd>+<kbd>Enter</kbd> for a new line</span>
+                    <span>TrailMate searches a trail database and may ask follow-up questions.</span>
                 </div>
 
             </form>
-
         </div>
 
     </main>
 </div>
+
+<div id="toast" class="toast" role="status" aria-live="polite"></div>
 
 
 <!-- =========================================
      JAVASCRIPT
      ========================================= -->
 <script>
-    const chatContainer = document.getElementById("chatContainer");
-    const chatContent = document.getElementById("chatContent");
+/* ---------------------------------------------------------
+   Elements
+   --------------------------------------------------------- */
+const chatContainer = document.getElementById("chatContainer");
+const chatContent   = document.getElementById("chatContent");
+const messageForm   = document.getElementById("messageForm");
+const messageInput  = document.getElementById("messageInput");
+const sendBtn       = document.getElementById("sendBtn");
+const newChatBtn    = document.getElementById("newChatBtn");
+const headerStatus  = document.getElementById("headerStatusText");
+const toastEl       = document.getElementById("toast");
 
-    const messageForm = document.getElementById("messageForm");
-    const messageInput = document.getElementById("messageInput");
-    const sendBtn = document.getElementById("sendBtn");
+let isSending = false;
+let autoScroll = true;
 
-    const newChatBtn = document.getElementById("newChatBtn");
+let assistantMessage = null;
+let assistantContent = null;
+let answerText = "";
+
+/* current agent panel state */
+let agent = null;   // { el, steps, title, sub, meta, glyph, startedAt, timer, resultCount, activeStep }
+
+const SUGGESTIONS = [
+    { icon: "💧",  title: "Easy walk near water",   sub: "Gentle and scenic",       query: "Find me an easy trail near water" },
+    { icon: "⛰️", title: "Tough mountain route",   sub: "For experienced hikers",  query: "Find me a difficult mountain trail" },
+    { icon: "🌊",  title: "Waterfall trail",        sub: "Big views, some climb",   query: "Find me a trail with waterfalls" },
+    { icon: "🌿",  title: "Short beginner trail",   sub: "Under an hour",           query: "Find me a short beginner trail" }
+];
+
+
+/* ---------------------------------------------------------
+   Helpers
+   --------------------------------------------------------- */
+function escapeHtml(value) {
+    if (value === null || value === undefined) return "";
+    return String(value)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+}
+
+function scrollToBottom(force) {
+    if (!force && !autoScroll) return;
+    chatContainer.scrollTop = chatContainer.scrollHeight;
+}
+
+chatContainer.addEventListener("scroll", () => {
+    const distance =
+        chatContainer.scrollHeight - chatContainer.scrollTop - chatContainer.clientHeight;
+    autoScroll = distance < 120;
+});
+
+function showToast(text) {
+    toastEl.textContent = text;
+    toastEl.classList.add("show");
+    clearTimeout(showToast._t);
+    showToast._t = setTimeout(() => toastEl.classList.remove("show"), 1800);
+}
+
+function setHeaderStatus(text) {
+    headerStatus.textContent = text;
+}
+
+/* Minimal, safe markdown: escapes first, then formats. */
+function renderMarkdown(raw) {
+    let text = escapeHtml(raw);
+
+    const blocks = [];
+    text = text.replace(/```([\s\S]*?)```/g, (_, code) => {
+        blocks.push(`<pre><code>${code.replace(/^\n/, "")}</code></pre>`);
+        return `\u0000${blocks.length - 1}\u0000`;
+    });
+
+    text = text
+        .replace(/`([^`\n]+)`/g, "<code>$1</code>")
+        .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
+        .replace(/(^|[\s(])\*([^*\n]+)\*/g, "$1<em>$2</em>")
+        .replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g,
+                 '<a href="$2" target="_blank" rel="noopener">$1</a>');
+
+    const lines = text.split("\n");
+    const out = [];
+    let list = null;
+
+    const closeList = () => {
+        if (list) { out.push(`</${list}>`); list = null; }
+    };
+
+    for (const line of lines) {
+        const trimmed = line.trim();
+
+        if (!trimmed) { closeList(); continue; }
+
+        const heading = trimmed.match(/^(#{1,4})\s+(.*)$/);
+        if (heading) {
+            closeList();
+            out.push(`<h3>${heading[2]}</h3>`);
+            continue;
+        }
+
+        const bullet = trimmed.match(/^[-*•]\s+(.*)$/);
+        if (bullet) {
+            if (list !== "ul") { closeList(); out.push("<ul>"); list = "ul"; }
+            out.push(`<li>${bullet[1]}</li>`);
+            continue;
+        }
+
+        const numbered = trimmed.match(/^\d+[.)]\s+(.*)$/);
+        if (numbered) {
+            if (list !== "ol") { closeList(); out.push("<ol>"); list = "ol"; }
+            out.push(`<li>${numbered[1]}</li>`);
+            continue;
+        }
+
+        closeList();
+        out.push(`<p>${trimmed}</p>`);
+    }
+    closeList();
+
+    return out.join("").replace(/\u0000(\d+)\u0000/g, (_, i) => blocks[Number(i)]);
+}
+
+
+/* ---------------------------------------------------------
+   Welcome screen
+   --------------------------------------------------------- */
+function renderWelcome() {
+    const section = document.createElement("section");
+    section.className = "welcome";
+    section.id = "welcome";
+
+    section.innerHTML = `
+        <div class="welcome-mark">🥾</div>
+        <h1>Where are we hiking next?</h1>
+        <p>Tell TrailMate the kind of trail you want and it will search the trail
+           database, then explain why each match fits.</p>
+        <div class="suggestions">
+            ${SUGGESTIONS.map(s => `
+                <button class="suggestion" type="button" data-query="${escapeHtml(s.query)}">
+                    <span class="suggestion-icon">${s.icon}</span>
+                    <span>
+                        <strong>${escapeHtml(s.title)}</strong>
+                        <small>${escapeHtml(s.sub)}</small>
+                    </span>
+                </button>
+            `).join("")}
+        </div>
+    `;
+
+    chatContent.appendChild(section);
+
+    section.querySelectorAll(".suggestion").forEach(btn => {
+        btn.addEventListener("click", () => sendMessage(btn.dataset.query));
+    });
+}
+
+function hideWelcome() {
     const welcome = document.getElementById("welcome");
+    if (welcome) welcome.remove();
+}
 
-    let isSending = false;
 
-    let currentAssistantMessage = null;
-    let currentAssistantContent = null;
+/* ---------------------------------------------------------
+   Messages
+   --------------------------------------------------------- */
+function addUserMessage(text) {
+    hideWelcome();
 
-    let executionPanel = null;
-    let executionSteps = null;
-    let executionStatus = null;
+    const message = document.createElement("div");
+    message.className = "message user";
+    message.innerHTML = `
+        <div class="message-body">
+            <div class="message-content">${escapeHtml(text)}</div>
+        </div>
+    `;
 
-    let currentAnswerText = "";
+    chatContent.appendChild(message);
+    autoScroll = true;
+    scrollToBottom(true);
+}
 
-    function scrollToBottom() {
-        chatContainer.scrollTop = chatContainer.scrollHeight;
-    }
-
-    function escapeHtml(value) {
-        if (value === null || value === undefined) {
-            return "";
-        }
-
-        return String(value)
-            .replace(/&/g, "&amp;")
-            .replace(/</g, "&lt;")
-            .replace(/>/g, "&gt;")
-            .replace(/"/g, "&quot;")
-            .replace(/'/g, "&#039;");
-    }
-
-    function hideWelcome() {
-        if (welcome) {
-            welcome.style.display = "none";
-        }
-    }
-
-    function addUserMessage(text) {
-        hideWelcome();
-
-        const message = document.createElement("div");
-        message.className = "message user";
-
-        message.innerHTML = `
-            <div class="message-body">
-                <div class="message-content">
-                    ${escapeHtml(text)}
-                </div>
+function createAssistantMessage() {
+    assistantMessage = document.createElement("div");
+    assistantMessage.className = "message assistant";
+    assistantMessage.innerHTML = `
+        <div class="message-body">
+            <div class="message-content streaming"></div>
+            <div class="message-actions" hidden>
+                <button class="msg-action" type="button" data-copy>
+                    <svg class="icon" viewBox="0 0 24 24" style="font-size:13px" aria-hidden="true">
+                        <rect x="9" y="9" width="11" height="11" rx="2"/>
+                        <path d="M5 15V6a2 2 0 0 1 2-2h8"/>
+                    </svg>
+                    Copy
+                </button>
             </div>
-            <div class="avatar">You</div>
-        `;
+        </div>
+    `;
 
-        chatContent.appendChild(message);
-        scrollToBottom();
-    }
+    chatContent.appendChild(assistantMessage);
+    assistantContent = assistantMessage.querySelector(".message-content");
 
-    function createAssistantMessage() {
-        currentAssistantMessage = document.createElement("div");
-        currentAssistantMessage.className = "message assistant";
-
-        currentAssistantMessage.innerHTML = `
-            <div class="avatar">🥾</div>
-            <div class="message-body">
-                <div class="assistant-name">TrailMate</div>
-                <div class="message-content"></div>
-            </div>
-        `;
-
-        chatContent.appendChild(currentAssistantMessage);
-
-        currentAssistantContent =
-            currentAssistantMessage.querySelector(".message-content");
-
-        scrollToBottom();
-    }
-
-    function createExecutionPanel() {
-        executionPanel = document.createElement("div");
-        executionPanel.className = "execution-panel";
-
-        executionPanel.innerHTML = `
-            <div class="execution-header">
-                <div class="execution-title">
-                    <span class="execution-title-icon">✦</span>
-                    <span>TRAILMATE AGENT</span>
-                </div>
-
-                <div class="execution-status running">
-                    Running
-                </div>
-            </div>
-
-            <div class="execution-steps"></div>
-        `;
-
-        chatContent.appendChild(executionPanel);
-
-        executionSteps =
-            executionPanel.querySelector(".execution-steps");
-
-        executionStatus =
-            executionPanel.querySelector(".execution-status");
-
-        scrollToBottom();
-    }
-
-    function addTraceStep(icon, title, detail = "", state = "") {
-        if (!executionPanel) {
-            createExecutionPanel();
-        }
-
-        const step = document.createElement("div");
-        step.className = `trace-step ${state}`;
-
-        step.innerHTML = `
-            <div class="trace-icon">${icon}</div>
-
-            <div class="trace-info">
-                <div class="trace-title">
-                    ${escapeHtml(title)}
-                </div>
-
-                ${
-                    detail
-                        ? `<div class="trace-detail">${escapeHtml(detail)}</div>`
-                        : ""
-                }
-            </div>
-        `;
-
-        executionSteps.appendChild(step);
-        scrollToBottom();
-
-        return step;
-    }
-
-    function setExecutionStatus(status, text) {
-        if (!executionStatus) {
-            return;
-        }
-
-        executionStatus.className = `execution-status ${status}`;
-        executionStatus.textContent = text;
-    }
-
-    function showSearchResults(results) {
-        if (!executionPanel || !results || !Array.isArray(results)) {
-            return;
-        }
-
-        if (results.length === 0) {
-            addTraceStep(
-                "📭",
-                "No trails found",
-                "The search returned no matching trails.",
-                "success"
-            );
-            return;
-        }
-
-        const section = document.createElement("div");
-        section.className = "results-section";
-
-        section.innerHTML = `
-            <div class="results-label">
-                <span>Search results</span>
-                <span>${results.length} found</span>
-            </div>
-        `;
-
-        results.forEach((result) => {
-            const card = document.createElement("div");
-            card.className = "trail-card";
-
-            const trailName =
-                result.trailName ??
-                result.trail_name ??
-                "Unknown trail";
-
-            const sectionName =
-                result.sectionName ??
-                result.section_name ??
-                "";
-
-            const chunkText =
-                result.chunkText ??
-                result.chunk_text ??
-                "";
-
-            const score =
-                result.rerankScore ??
-                result.rerank_score;
-
-            card.innerHTML = `
-                <div class="trail-card-header">
-                    <div class="trail-card-title-wrap">
-                        <div class="trail-card-icon">🥾</div>
-                        <div>
-                            <div class="trail-name">
-                                ${escapeHtml(trailName)}
-                            </div>
-
-                            ${
-                                sectionName
-                                    ? `<div class="trail-section">${escapeHtml(sectionName)}</div>`
-                                    : ""
-                            }
-                        </div>
-                    </div>
-
-                    ${
-                        score !== undefined && score !== null
-                            ? `
-                                <div class="trail-score">
-                                    ${Number(score).toFixed(3)}
-                                </div>
-                            `
-                            : ""
-                    }
-                </div>
-
-                ${
-                    chunkText
-                        ? `<div class="trail-text">${escapeHtml(chunkText)}</div>`
-                        : ""
-                }
-            `;
-
-            section.appendChild(card);
+    assistantMessage.querySelector("[data-copy]")
+        .addEventListener("click", function () {
+            navigator.clipboard
+                .writeText(this.closest(".message-body").dataset.raw || "")
+                .then(() => showToast("Copied to clipboard"))
+                .catch(() => showToast("Couldn't copy"));
         });
 
-        executionPanel.appendChild(section);
-        scrollToBottom();
-    }
+    scrollToBottom();
+}
 
-    function showClarification(question) {
-        if (!question) {
-            return;
-        }
+function finishAssistantMessage() {
+    if (!assistantContent) return;
+    assistantContent.classList.remove("streaming");
 
-        const card = document.createElement("div");
-        card.className = "clarification-card";
+    const body = assistantMessage.querySelector(".message-body");
+    body.dataset.raw = answerText;
 
-        card.innerHTML = `
-            <div class="clarification-icon">?</div>
-            <div>
-                <div class="clarification-title">A little more detail</div>
-                <div class="clarification-question">
-                    ${escapeHtml(question)}
+    const actions = assistantMessage.querySelector(".message-actions");
+    if (answerText.trim()) actions.hidden = false;
+}
+
+
+/* ---------------------------------------------------------
+   Agent panel — live while running, collapsible after
+   --------------------------------------------------------- */
+function createAgentPanel() {
+    hideWelcome();
+
+    const el = document.createElement("div");
+    el.className = "agent-panel is-open";
+    el.dataset.state = "running";
+
+    el.innerHTML = `
+        <button class="agent-head" type="button" aria-expanded="true">
+            <span class="agent-glyph"><span class="spinner"></span></span>
+            <span class="agent-head-text">
+                <span class="agent-title">Working on it</span>
+                <span class="agent-sub">Starting up…</span>
+            </span>
+            <span class="agent-meta"></span>
+            <span class="agent-chevron">
+                <svg class="icon" viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="m6 9 6 6 6-6"/>
+                </svg>
+            </span>
+        </button>
+        <div class="agent-body">
+            <div class="agent-body-inner">
+                <div class="agent-body-pad">
+                    <div class="agent-steps"></div>
                 </div>
             </div>
+        </div>
+    `;
+
+    chatContent.appendChild(el);
+
+    agent = {
+        el,
+        head:   el.querySelector(".agent-head"),
+        glyph:  el.querySelector(".agent-glyph"),
+        title:  el.querySelector(".agent-title"),
+        sub:    el.querySelector(".agent-sub"),
+        meta:   el.querySelector(".agent-meta"),
+        steps:  el.querySelector(".agent-steps"),
+        pad:    el.querySelector(".agent-body-pad"),
+        startedAt: Date.now(),
+        resultCount: null,
+        activeStep: null,
+        timer: null
+    };
+
+    agent.head.addEventListener("click", () => toggleAgentPanel(agent));
+
+    agent.timer = setInterval(() => {
+        const seconds = (Date.now() - agent.startedAt) / 1000;
+        agent.meta.textContent = seconds.toFixed(1) + "s";
+    }, 100);
+
+    scrollToBottom();
+    return agent;
+}
+
+function ensureAgentPanel() {
+    return agent || createAgentPanel();
+}
+
+function toggleAgentPanel(panel, force) {
+    const open = force !== undefined ? force : !panel.el.classList.contains("is-open");
+    panel.el.classList.toggle("is-open", open);
+    panel.head.setAttribute("aria-expanded", String(open));
+}
+
+function setAgentHeader(title, sub) {
+    if (!agent) return;
+    if (title !== null && title !== undefined) agent.title.textContent = title;
+    if (sub  !== null && sub  !== undefined) agent.sub.textContent = sub;
+}
+
+function addTraceStep(iconSvg, title, detail, state) {
+    const panel = ensureAgentPanel();
+
+    /* the previous "active" step settles into a done state */
+    if (panel.activeStep && panel.activeStep.classList.contains("active")) {
+        panel.activeStep.classList.remove("active");
+        panel.activeStep.classList.add("success");
+        panel.activeStep.querySelector(".trace-icon").innerHTML = checkIcon();
+    }
+
+    const step = document.createElement("div");
+    step.className = "trace-step " + (state || "");
+    step.innerHTML = `
+        <div class="trace-icon">${state === "active" ? '<span class="spinner"></span>' : iconSvg}</div>
+        <div class="trace-info">
+            <div class="trace-title">${escapeHtml(title)}</div>
+            ${detail ? `<div class="trace-detail">${escapeHtml(detail)}</div>` : ""}
+        </div>
+    `;
+
+    panel.steps.appendChild(step);
+    panel.activeStep = step;
+
+    /* header mirrors the newest step so a collapsed panel still reads live */
+    setAgentHeader(null, title);
+
+    scrollToBottom();
+    return step;
+}
+
+function checkIcon() {
+    return `<svg class="icon" viewBox="0 0 24 24" style="font-size:12px"><path d="m5 13 4 4L19 7"/></svg>`;
+}
+
+function settleAgent(state, title, sub) {
+    if (!agent) return;
+
+    clearInterval(agent.timer);
+
+    if (agent.activeStep && agent.activeStep.classList.contains("active")) {
+        agent.activeStep.classList.remove("active");
+        agent.activeStep.classList.add(state === "error" ? "error" : "success");
+        if (state !== "error") {
+            agent.activeStep.querySelector(".trace-icon").innerHTML = checkIcon();
+        }
+    }
+
+    agent.el.dataset.state = state;
+    agent.glyph.innerHTML = state === "error"
+        ? `<svg class="icon" viewBox="0 0 24 24" style="font-size:14px"><path d="M12 8v5M12 16.5v.01"/><circle cx="12" cy="12" r="9"/></svg>`
+        : checkIcon();
+
+    const elapsed = ((Date.now() - agent.startedAt) / 1000).toFixed(1) + "s";
+    agent.meta.textContent = elapsed;
+
+    setAgentHeader(title, sub);
+}
+
+
+/* ---------------------------------------------------------
+   Search results
+   --------------------------------------------------------- */
+function showSearchResults(results) {
+    const panel = ensureAgentPanel();
+
+    if (!Array.isArray(results) || results.length === 0) return;
+
+    const section = document.createElement("div");
+    section.className = "results-section";
+    section.innerHTML = `
+        <div class="results-label">
+            <span>Trails found</span>
+            <span>${results.length} result${results.length === 1 ? "" : "s"}</span>
+        </div>
+    `;
+
+    results.forEach(result => {
+        const trailName   = result.trailName   ?? result.trail_name   ?? "Unknown trail";
+        const sectionName = result.sectionName ?? result.section_name ?? "";
+        const chunkText   = result.chunkText   ?? result.chunk_text   ?? "";
+        const score       = result.rerankScore ?? result.rerank_score;
+
+        const card = document.createElement("div");
+        card.className = "trail-card";
+        card.innerHTML = `
+            <div class="trail-card-header">
+                <div class="trail-card-title-wrap">
+                    <div class="trail-card-icon">🥾</div>
+                    <div>
+                        <div class="trail-name">${escapeHtml(trailName)}</div>
+                        ${sectionName ? `<div class="trail-section">${escapeHtml(sectionName)}</div>` : ""}
+                    </div>
+                </div>
+                ${
+                    score !== undefined && score !== null
+                        ? `<div class="trail-score">${Number(score).toFixed(3)}</div>`
+                        : ""
+                }
+            </div>
+            ${chunkText ? `<div class="trail-text clamped">${escapeHtml(chunkText)}</div>` : ""}
         `;
 
-        chatContent.appendChild(card);
+        const text = card.querySelector(".trail-text");
+        if (text) {
+            text.addEventListener("click", () => text.classList.toggle("clamped"));
+            text.style.cursor = "pointer";
+        }
+
+        section.appendChild(card);
+    });
+
+    panel.pad.appendChild(section);
+    panel.resultCount = results.length;
+    scrollToBottom();
+}
+
+
+/* ---------------------------------------------------------
+   Clarification
+   --------------------------------------------------------- */
+function showClarification(question) {
+    if (!question) return;
+
+    const card = document.createElement("div");
+    card.className = "clarification-card";
+    card.innerHTML = `
+        <div class="clarification-icon">?</div>
+        <div>
+            <div class="clarification-title">One quick question</div>
+            <div class="clarification-question">${escapeHtml(question)}</div>
+        </div>
+    `;
+
+    chatContent.appendChild(card);
+    scrollToBottom();
+}
+
+
+/* ---------------------------------------------------------
+   SSE event handling
+   --------------------------------------------------------- */
+const ICONS = {
+    brain:  `<svg class="icon" viewBox="0 0 24 24" style="font-size:12px"><path d="M12 5a3 3 0 0 0-6 0v1a3 3 0 0 0 0 6 3 3 0 0 0 3 3h3zM12 5a3 3 0 0 1 6 0v1a3 3 0 0 1 0 6 3 3 0 0 1-3 3h-3z"/></svg>`,
+    search: `<svg class="icon" viewBox="0 0 24 24" style="font-size:12px"><circle cx="11" cy="11" r="6"/><path d="m20 20-4.5-4.5"/></svg>`,
+    ask:    `<svg class="icon" viewBox="0 0 24 24" style="font-size:12px"><path d="M9.5 9a2.5 2.5 0 1 1 3.3 2.4c-.8.3-1.3 1-1.3 1.8v.3M11.5 17v.01"/></svg>`,
+    write:  `<svg class="icon" viewBox="0 0 24 24" style="font-size:12px"><path d="M4 20h4L19 9a2.8 2.8 0 0 0-4-4L4 16z"/></svg>`,
+    data:   `<svg class="icon" viewBox="0 0 24 24" style="font-size:12px"><path d="M5 20V11M12 20V5M19 20v-6"/></svg>`,
+    shield: `<svg class="icon" viewBox="0 0 24 24" style="font-size:12px"><path d="M12 3.5 5 6v6c0 4 3 7.2 7 8.5 4-1.3 7-4.5 7-8.5V6z"/></svg>`,
+    warn:   `<svg class="icon" viewBox="0 0 24 24" style="font-size:12px"><path d="M12 9v4.5M12 17v.01"/><circle cx="12" cy="12" r="9"/></svg>`
+};
+
+function handleSSEEvent(event) {
+    const type = event.type;
+
+    if (type === "agent_start") {
+        createAgentPanel();
+        setHeaderStatus("Thinking");
+        setAgentHeader("Working on it", "Reading your request");
+        addTraceStep(ICONS.brain, "Understanding your request",
+            "Deciding what information is needed.", "active");
+        return;
+    }
+
+    if (type === "agent_decision") {
+        const action = event.action || "answer";
+        const reason = event.reason || "Picked the next step.";
+
+        if (action === "search") {
+            addTraceStep(ICONS.search, "Decided to search the trail database", reason, "success");
+        } else if (action === "clarify") {
+            addTraceStep(ICONS.ask, "Decided to ask a follow-up question", reason, "success");
+        } else {
+            addTraceStep(ICONS.write, "Decided to answer directly", reason, "success");
+        }
+        return;
+    }
+
+    if (type === "tool_start") {
+        setHeaderStatus("Searching");
+        setAgentHeader("Searching trails", null);
+        addTraceStep(ICONS.search, "Searching the trail database",
+            event.detail || "Building the search query.", "active");
+        return;
+    }
+
+    if (type === "tool_progress") {
+        addTraceStep(ICONS.search, "Looking through trails",
+            event.detail || "Scanning the trail database.", "active");
+        return;
+    }
+
+    if (type === "tool_end") {
+        const count = event.count ?? (Array.isArray(event.results) ? event.results.length : null);
+
+        addTraceStep(
+            ICONS.data,
+            count !== null ? `Found ${count} matching trail${count === 1 ? "" : "s"}` : "Search finished",
+            count === 0 ? "Nothing matched — trying a different approach." : "Ranking the closest matches.",
+            "success"
+        );
+
+        showSearchResults(event.results);
+        return;
+    }
+
+    if (type === "clarify") {
+        const question =
+            event.question || event.clarification_question || event.detail || "";
+
+        settleAgent("done", "Needs one more detail", "Tap to see the steps");
+        toggleAgentPanel(agent, false);
+        showClarification(question);
+        setHeaderStatus("Waiting for you");
+        return;
+    }
+
+    if (type === "answer_start") {
+        addTraceStep(ICONS.write, "Writing the answer",
+            "Turning the results into a recommendation.", "active");
+
+        /* collapse the trace once the real answer starts streaming */
+        const count = agent && agent.resultCount;
+        settleAgent(
+            "done",
+            count ? `Searched trails · ${count} result${count === 1 ? "" : "s"}` : "Searched trails",
+            "Tap to see the steps"
+        );
+        toggleAgentPanel(agent, false);
+
+        setHeaderStatus("Writing");
+        createAssistantMessage();
+        answerText = "";
+        return;
+    }
+
+    if (type === "chunk") {
+        if (!assistantMessage) createAssistantMessage();
+
+        answerText += event.text ?? event.content ?? event.chunk ?? "";
+        assistantContent.innerHTML = renderMarkdown(answerText);
+        assistantContent.classList.add("streaming");
+        scrollToBottom();
+        return;
+    }
+
+    if (type === "answer_end") {
+        finishAssistantMessage();
+        return;
+    }
+
+    if (type === "guardrail") {
+        if (agent) {
+            const step = addTraceStep(ICONS.shield, "Checked the response",
+                event.detail || "Response reviewed before it was shown.", "success");
+            step.querySelector(".trace-icon").innerHTML = ICONS.shield;
+        }
+        return;
+    }
+
+    if (type === "done") {
+        finishAssistantMessage();
+        if (agent && agent.el.dataset.state === "running") {
+            settleAgent("done", "Finished", "Tap to see the steps");
+            toggleAgentPanel(agent, false);
+        }
+        setHeaderStatus("Ready");
+        unlockInput();
+        scrollToBottom();
+        return;
+    }
+
+    if (type === "error") {
+        const errorMessage =
+            event.message || event.error || event.detail || "The request didn't go through.";
+
+        ensureAgentPanel();
+        addTraceStep(ICONS.warn, "Request failed", errorMessage, "error");
+        settleAgent("error", "Something went wrong", errorMessage);
+
+        if (!assistantMessage) createAssistantMessage();
+        answerText = errorMessage;
+        assistantContent.innerHTML = renderMarkdown(errorMessage);
+        finishAssistantMessage();
+
+        setHeaderStatus("Error");
+        unlockInput();
+    }
+}
+
+
+/* ---------------------------------------------------------
+   Transport
+   --------------------------------------------------------- */
+async function readSSE(response) {
+    if (!response.ok) throw new Error(`Server returned ${response.status}`);
+    if (!response.body) throw new Error("The server didn't return a response stream.");
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+
+    while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+
+        const events = buffer.split("\n\n");
+        buffer = events.pop() || "";
+
+        for (const rawEvent of events) {
+            for (const line of rawEvent.split("\n")) {
+                if (!line.startsWith("data:")) continue;
+
+                const data = line.slice(5).trim();
+                if (!data) continue;
+
+                try {
+                    handleSSEEvent(JSON.parse(data));
+                } catch (error) {
+                    console.error("Invalid SSE event:", data, error);
+                }
+            }
+        }
+    }
+}
+
+function lockInput() {
+    isSending = true;
+    sendBtn.disabled = true;
+    messageInput.disabled = true;
+}
+
+function unlockInput() {
+    isSending = false;
+    sendBtn.disabled = false;
+    messageInput.disabled = false;
+    messageInput.focus();
+}
+
+async function sendMessage(text) {
+    if (isSending || !text || !text.trim()) return;
+
+    const message = text.trim();
+
+    addUserMessage(message);
+    messageInput.value = "";
+    messageInput.style.height = "auto";
+
+    /* each turn gets a fresh panel + message */
+    agent = null;
+    assistantMessage = null;
+    assistantContent = null;
+    answerText = "";
+
+    lockInput();
+    setHeaderStatus("Thinking");
+
+    try {
+        const response = await fetch("/hiking/ask", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "Accept": "text/event-stream"
+            },
+            credentials: "include",
+            body: JSON.stringify({ message })
+        });
+
+        await readSSE(response);
+        finishAssistantMessage();
+
+    } catch (error) {
+        console.error("Request failed:", error);
+
+        ensureAgentPanel();
+        addTraceStep(ICONS.warn, "Couldn't reach TrailMate",
+            error.message || "Check your connection and try again.", "error");
+        settleAgent("error", "Connection failed", error.message || "Try again in a moment.");
+        setHeaderStatus("Offline");
+
+    } finally {
+        if (agent && agent.el.dataset.state === "running") {
+            settleAgent("done", "Finished", "Tap to see the steps");
+            toggleAgentPanel(agent, false);
+        }
+        if (headerStatus.textContent === "Thinking" ||
+            headerStatus.textContent === "Writing" ||
+            headerStatus.textContent === "Searching") {
+            setHeaderStatus("Ready");
+        }
+        unlockInput();
         scrollToBottom();
     }
+}
 
-    function handleSSEEvent(event) {
-        const type = event.type;
 
-        if (type === "agent_start") {
-            createExecutionPanel();
+/* ---------------------------------------------------------
+   Composer events
+   --------------------------------------------------------- */
+messageForm.addEventListener("submit", event => {
+    event.preventDefault();
+    sendMessage(messageInput.value);
+});
 
-            addTraceStep(
-                "🧠",
-                "Analyzing your request",
-                "TrailMate is deciding what information is needed.",
-                "active"
-            );
+messageInput.addEventListener("keydown", event => {
+    if (event.key === "Enter" && !event.shiftKey) {
+        event.preventDefault();
+        messageForm.requestSubmit();
+    }
+});
 
-            return;
-        }
+messageInput.addEventListener("input", function () {
+    this.style.height = "auto";
+    this.style.height = Math.min(this.scrollHeight, 168) + "px";
+});
 
-        if (type === "agent_decision") {
-            const action = event.action || "unknown";
-            const reason =
-                event.reason ||
-                "The agent selected the next step.";
-
-            if (action === "search") {
-                addTraceStep(
-                    "🔎",
-                    "Agent decided to search",
-                    reason,
-                    "success"
-                );
-            } else if (action === "clarify") {
-                addTraceStep(
-                    "❓",
-                    "Agent decided to clarify",
-                    reason,
-                    "success"
-                );
-            } else {
-                addTraceStep(
-                    "💬",
-                    "Agent decided to answer",
-                    reason,
-                    "success"
-                );
-            }
-
-            return;
-        }
-
-        if (type === "clarify") {
-            const question =
-                event.question ||
-                event.clarification_question ||
-                event.detail ||
-                "";
-
-            showClarification(question);
-
-            setExecutionStatus(
-                "completed",
-                "Waiting for clarification"
-            );
-
-            return;
-        }
-
-        if (type === "tool_start") {
-            addTraceStep(
-                "🔧",
-                "Searching the trail database",
-                event.detail ||
-                "Preparing the trail search.",
-                "active"
-            );
-
-            return;
-        }
-
-        if (type === "tool_progress") {
-            addTraceStep(
-                "🔍",
-                "Searching",
-                event.detail ||
-                "Searching the TrailMate trail database.",
-                "active"
-            );
-
-            return;
-        }
-
-        if (type === "tool_end") {
-            const count =
-                event.count ??
-                (
-                    Array.isArray(event.results)
-                        ? event.results.length
-                        : null
-                );
-
-            addTraceStep(
-                "📊",
-                "Search completed",
-                count !== null
-                    ? `${count} trail result(s) returned.`
-                    : "Trail search completed.",
-                "success"
-            );
-
-            showSearchResults(event.results);
-            return;
-        }
-
-        if (type === "answer_start") {
-            addTraceStep(
-                "✍️",
-                "Writing your answer",
-                "Preparing a response from the available information.",
-                "active"
-            );
-
-            createAssistantMessage();
-            currentAnswerText = "";
-            return;
-        }
-
-        if (type === "chunk") {
-            if (!currentAssistantMessage) {
-                createAssistantMessage();
-            }
-
-            const text =
-                event.text ??
-                event.content ??
-                event.chunk ??
-                "";
-
-            currentAnswerText += text;
-            currentAssistantContent.textContent = currentAnswerText;
-
-            scrollToBottom();
-            return;
-        }
-
-        if (type === "answer_end") {
-            return;
-        }
-
-        if (type === "guardrail") {
-            addTraceStep(
-                "🛡️",
-                "Response safety check",
-                event.detail ||
-                "The generated response was checked before display.",
-                "success"
-            );
-
-            return;
-        }
-
-        if (type === "done") {
-            setExecutionStatus(
-                "completed",
-                "Completed"
-            );
-
-            isSending = false;
-            sendBtn.disabled = false;
-            messageInput.disabled = false;
-            messageInput.focus();
-
-            scrollToBottom();
-            return;
-        }
-
-        if (type === "error") {
-            const errorMessage =
-                event.message ||
-                event.error ||
-                event.detail ||
-                "Something went wrong.";
-
-            setExecutionStatus(
-                "error",
-                "Error"
-            );
-
-            addTraceStep(
-                "⚠️",
-                "Request failed",
-                errorMessage,
-                "error"
-            );
-
-            if (!currentAssistantMessage) {
-                createAssistantMessage();
-            }
-
-            currentAssistantContent.textContent = errorMessage;
-
-            isSending = false;
-            sendBtn.disabled = false;
-            messageInput.disabled = false;
-        }
+newChatBtn.addEventListener("click", async () => {
+    try {
+        await fetch("/hiking/new-chat", { method: "POST", credentials: "include" });
+    } catch (error) {
+        console.error("Could not start a new chat:", error);
     }
 
-    async function readSSE(response) {
-        if (!response.ok) {
-            throw new Error(
-                `Server returned ${response.status}`
-            );
-        }
+    chatContent.innerHTML = "";
+    agent = null;
+    assistantMessage = null;
+    assistantContent = null;
+    answerText = "";
 
-        if (!response.body) {
-            throw new Error(
-                "The server did not return a response stream."
-            );
-        }
+    renderWelcome();
+    setHeaderStatus("Ready");
+    messageInput.focus();
+});
 
-        const reader = response.body.getReader();
-        const decoder = new TextDecoder();
 
-        let buffer = "";
-
-        while (true) {
-            const { value, done } = await reader.read();
-
-            if (done) {
-                break;
-            }
-
-            buffer += decoder.decode(
-                value,
-                { stream: true }
-            );
-
-            const events = buffer.split("\n\n");
-            buffer = events.pop() || "";
-
-            for (const rawEvent of events) {
-                const lines = rawEvent.split("\n");
-
-                for (const line of lines) {
-                    if (!line.startsWith("data:")) {
-                        continue;
-                    }
-
-                    const data = line.substring(5).trim();
-
-                    if (!data) {
-                        continue;
-                    }
-
-                    try {
-                        handleSSEEvent(JSON.parse(data));
-                    } catch (error) {
-                        console.error(
-                            "Invalid SSE event:",
-                            data,
-                            error
-                        );
-                    }
-                }
-            }
-        }
-    }
-
-    async function sendMessage(text) {
-        if (
-            isSending ||
-            !text ||
-            !text.trim()
-        ) {
-            return;
-        }
-
-        const message = text.trim();
-
-        addUserMessage(message);
-
-        messageInput.value = "";
-        messageInput.style.height = "auto";
-
-        isSending = true;
-        sendBtn.disabled = true;
-        messageInput.disabled = true;
-
-        try {
-            const response = await fetch(
-                "/hiking/ask",
-                {
-                    method: "POST",
-
-                    headers: {
-                        "Content-Type":
-                            "application/json",
-
-                        "Accept":
-                            "text/event-stream"
-                    },
-
-                    credentials: "include",
-
-                    body: JSON.stringify({
-                        message: message
-                    })
-                }
-            );
-
-            await readSSE(response);
-
-        } catch (error) {
-            console.error(
-                "Request failed:",
-                error
-            );
-
-            if (!executionPanel) {
-                createExecutionPanel();
-            }
-
-            setExecutionStatus(
-                "error",
-                "Error"
-            );
-
-            addTraceStep(
-                "⚠️",
-                "Connection error",
-                error.message ||
-                "Could not connect to TrailMate.",
-                "error"
-            );
-
-        } finally {
-            isSending = false;
-
-            sendBtn.disabled = false;
-            messageInput.disabled = false;
-
-            messageInput.focus();
-            scrollToBottom();
-        }
-    }
-
-    messageForm.addEventListener(
-        "submit",
-        function(event) {
-            event.preventDefault();
-
-            sendMessage(
-                messageInput.value
-            );
-        }
-    );
-
-    messageInput.addEventListener(
-        "keydown",
-        function(event) {
-            if (
-                event.key === "Enter" &&
-                !event.shiftKey
-            ) {
-                event.preventDefault();
-                messageForm.requestSubmit();
-            }
-        }
-    );
-
-    messageInput.addEventListener(
-        "input",
-        function() {
-            this.style.height = "auto";
-
-            this.style.height =
-                Math.min(
-                    this.scrollHeight,
-                    150
-                ) + "px";
-        }
-    );
-
-    function attachSuggestionHandlers(root = document) {
-        root.querySelectorAll(".suggestion").forEach(
-            function(button) {
-                button.addEventListener(
-                    "click",
-                    function() {
-                        sendMessage(
-                            this.dataset.query
-                        );
-                    }
-                );
-            }
-        );
-    }
-
-    attachSuggestionHandlers();
-
-    newChatBtn.addEventListener(
-        "click",
-        async function() {
-            try {
-                await fetch(
-                    "/hiking/new-chat",
-                    {
-                        method: "POST",
-                        credentials: "include"
-                    }
-                );
-            } catch (error) {
-                console.error(
-                    "Could not create new chat:",
-                    error
-                );
-            }
-
-            chatContent.innerHTML = "";
-
-            const newWelcome =
-                document.createElement("section");
-
-            newWelcome.id = "welcome";
-            newWelcome.className = "welcome";
-
-            newWelcome.innerHTML = `
-                <div class="welcome-badge">
-                    <span>✦</span>
-                    AI-powered trail discovery
-                </div>
-
-                <div class="welcome-icon">🥾</div>
-
-                <h1>
-                    Where will your next<br>
-                    <span>adventure</span> take you?
-                </h1>
-
-                <p>
-                    Tell TrailMate what you're looking for and
-                    I'll search the trail database for matching options.
-                </p>
-
-                <div class="suggestions">
-
-                    <button class="suggestion" type="button"
-                            data-query="Find me an easy trail near water">
-                        <span class="suggestion-icon">💧</span>
-                        <span>
-                            <strong>Easy &amp; near water</strong>
-                            <small>Relaxed scenery</small>
-                        </span>
-                        <span class="suggestion-arrow">→</span>
-                    </button>
-
-                    <button class="suggestion" type="button"
-                            data-query="Find me a difficult mountain trail">
-                        <span class="suggestion-icon">⛰️</span>
-                        <span>
-                            <strong>Difficult mountain trail</strong>
-                            <small>For experienced hikers</small>
-                        </span>
-                        <span class="suggestion-arrow">→</span>
-                    </button>
-
-                    <button class="suggestion" type="button"
-                            data-query="Find me a trail with waterfalls">
-                        <span class="suggestion-icon">🌊</span>
-                        <span>
-                            <strong>Trail with waterfalls</strong>
-                            <small>Waterfall views</small>
-                        </span>
-                        <span class="suggestion-arrow">→</span>
-                    </button>
-
-                    <button class="suggestion" type="button"
-                            data-query="Find me a short beginner trail">
-                        <span class="suggestion-icon">🌿</span>
-                        <span>
-                            <strong>Short beginner trail</strong>
-                            <small>Simple &amp; accessible</small>
-                        </span>
-                        <span class="suggestion-arrow">→</span>
-                    </button>
-
-                </div>
-            `;
-
-            chatContent.appendChild(newWelcome);
-
-            attachSuggestionHandlers(newWelcome);
-
-            currentAssistantMessage = null;
-            currentAssistantContent = null;
-
-            executionPanel = null;
-            executionSteps = null;
-            executionStatus = null;
-
-            currentAnswerText = "";
-
-            scrollToBottom();
-            messageInput.focus();
-        }
-    );
+/* ---------------------------------------------------------
+   Boot
+   --------------------------------------------------------- */
+renderWelcome();
+messageInput.focus();
 </script>
 
 </body>
