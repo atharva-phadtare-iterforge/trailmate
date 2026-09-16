@@ -4,7 +4,7 @@ from fastapi import FastAPI
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-from .hiking.graph import router as hiking_router
+from .agent.main import router as agent_router
 
 
 # =========================================================
@@ -51,7 +51,7 @@ async def home():
 
 
 # =========================================================
-# HIKING ROUTER
+# AGENT ROUTER
 # =========================================================
 
-app.include_router(hiking_router)
+app.include_router(agent_router)
