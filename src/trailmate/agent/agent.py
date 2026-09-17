@@ -8,6 +8,8 @@ from langgraph.config import get_stream_writer
 from langgraph.graph import END, START, StateGraph
 from langgraph.prebuilt import ToolNode
 
+from trailmate.observability.langfuse import langfuse
+
 from .model import TrailMateModel
 from .prompts import SYSTEM_PROMPT
 from .state import TrailMateState
@@ -71,40 +73,66 @@ async def llm_call(state: TrailMateState):
         *state["messages"],
     ]
 
-    response = await model.complete(
-        messages=messages,
-        tools=get_tool_schemas(),
+    latest_message = (
+        str(state["messages"][-1].content)
+        if state["messages"]
+        else None
     )
 
-    # =====================================================
-    # MODEL REQUESTED A TOOL
-    # =====================================================
+    # =========================================================
+    # LANGFUSE AGENT OBSERVATION
+    # =========================================================
 
-    if response.tool_calls:
+    with langfuse.start_as_current_observation(
+        as_type="span",
+        name="agent",
+        input={
+            "user_request": latest_message,
+        },
+    ) as observation:
 
-        valid_tool_calls = [
-            tool_call
-            for tool_call in response.tool_calls
-            if tool_call["name"] == search_trails_tool.name
-        ]
+        response = await model.complete(
+            messages=messages,
+            tools=get_tool_schemas(),
+        )
 
-        invalid_tool_calls = [
-            tool_call
-            for tool_call in response.tool_calls
-            if tool_call["name"] != search_trails_tool.name
-        ]
+        # =====================================================
+        # MODEL REQUESTED A TOOL
+        # =====================================================
 
-        # =================================================
-        # INVALID TOOL CALL
-        # =================================================
+        if response.tool_calls:
 
-        if invalid_tool_calls:
+            valid_tool_calls = [
+                tool_call
+                for tool_call in response.tool_calls
+                if tool_call["name"] == search_trails_tool.name
+            ]
 
-            direct_messages = [
-                SystemMessage(
-                    content=(
-                        SYSTEM_PROMPT
-                        + """
+            invalid_tool_calls = [
+                tool_call
+                for tool_call in response.tool_calls
+                if tool_call["name"] != search_trails_tool.name
+            ]
+
+            # =================================================
+            # INVALID TOOL CALL
+            # =================================================
+
+            if invalid_tool_calls:
+
+                observation.update(
+                    output={
+                        "decision": "direct_answer",
+                        "reason": "Model requested an unsupported tool.",
+                        "tool": None,
+                    }
+                )
+
+                direct_messages = [
+                    SystemMessage(
+                        content=(
+                            SYSTEM_PROMPT
+                            + """
 
 Respond directly to the user's current request.
 
@@ -112,48 +140,78 @@ Do not call a tool.
 Do not create or simulate a tool call.
 Return the response as normal assistant text.
 """
-                    )
-                ),
-                *state["messages"],
-            ]
+                        )
+                    ),
+                    *state["messages"],
+                ]
 
-            direct_response = await model.complete(
-                messages=direct_messages,
-                tools=None,
+                direct_response = await model.complete(
+                    messages=direct_messages,
+                    tools=None,
+                )
+
+                return {
+                    "messages": [
+                        direct_response
+                    ],
+                    "search_performed": False,
+                }
+
+            # =================================================
+            # VALID SEARCH TOOL CALL
+            # =================================================
+
+            response.tool_calls = valid_tool_calls
+
+            tool_metadata = []
+
+            for tool_call in valid_tool_calls:
+                tool_metadata.append(
+                    {
+                        "name": tool_call["name"],
+                        "arguments": tool_call["args"],
+                    }
+                )
+
+            observation.update(
+                output={
+                    "decision": "search",
+                    "reason": (
+                        "The model selected the TrailMate search tool "
+                        "for the current request."
+                    ),
+                    "tool": "search_trails_tool",
+                    "tool_calls": tool_metadata,
+                }
             )
 
             return {
                 "messages": [
-                    direct_response
+                    response
                 ],
-                "search_performed": False,
+                "search_performed": True,
             }
 
-        # =================================================
-        # VALID SEARCH TOOL CALL
-        # =================================================
+        # =====================================================
+        # DIRECT ANSWER
+        # =====================================================
 
-        response.tool_calls = valid_tool_calls
+        observation.update(
+            output={
+                "decision": "direct_answer",
+                "reason": (
+                    "The model did not request the TrailMate search tool."
+                ),
+                "tool": None,
+            }
+        )
 
         return {
             "messages": [
                 response
             ],
-            "search_performed": True,
+            "search_performed": False,
         }
-
-    # =====================================================
-    # DIRECT ANSWER
-    # =====================================================
-
-    return {
-        "messages": [
-            response
-        ],
-        "search_performed": False,
-    }
-
-
 # =========================================================
 # ROUTING
 # =========================================================
@@ -281,7 +339,7 @@ Do not assume that every trail returned by semantic search is a match.
 If several trails match, describe each matching trail separately rather than
 combining all trails into one short paragraph.
 
-You may use Markdown formatting. Trail names can be written in bold, followed
+You may use Markdown formatting. Trail names can be written in **bold**, followed
 by a short natural paragraph.
 
 For example, the response structure should feel like:
@@ -354,6 +412,7 @@ trail-specific facts.
 Do not invent, assume, or supplement trail-specific information from general
 knowledge.
 """
+
         final_messages = [
             SystemMessage(
                 content=final_system_prompt
@@ -510,20 +569,40 @@ Keep the response concise, clear, and natural.
 
     response_text = ""
 
-    async for chunk in model.stream(
-        messages=final_messages,
-        tools=None,
-    ):
+    # =====================================================
+    # LANGFUSE: FINAL ANSWER GENERATION
+    # =====================================================
 
-        if not chunk:
-            continue
+    with langfuse.start_as_current_observation(
+        as_type="generation",
+        name="final-answer-generation",
+        input={
+            "message_count": len(final_messages),
+            "search_performed": search_performed,
+        },
+        model=model.model,
+    ) as observation:
 
-        response_text += chunk
+        async for chunk in model.stream(
+            messages=final_messages,
+            tools=None,
+        ):
 
-        writer(
-            {
-                "type": "answer_chunk",
-                "text": chunk,
+            if not chunk:
+                continue
+
+            response_text += chunk
+
+            writer(
+                {
+                    "type": "answer_chunk",
+                    "text": chunk,
+                }
+            )
+
+        observation.update(
+            output={
+                "response": response_text,
             }
         )
 

@@ -4,6 +4,8 @@ import requests
 
 from langchain_core.tools import tool
 
+from trailmate.observability.langfuse import langfuse
+
 
 SEARCH_SERVICE_URL = "http://127.0.0.1:8002/search"
 
@@ -65,22 +67,67 @@ def search_trails_tool(query: str) -> str:
         Trail information returned from the TrailMate database.
     """
 
-    response = requests.post(
-        SEARCH_SERVICE_URL,
-        json={
+    # =========================================================
+    # LANGFUSE TOOL OBSERVATION
+    # =========================================================
+
+    with langfuse.start_as_current_observation(
+        as_type="tool",
+        name="search_trails_tool",
+        input={
             "query": query,
-            "top_k": 5,
         },
-        timeout=30,
-    )
+    ) as observation:
 
-    response.raise_for_status()
+        try:
 
-    data = response.json()
+            response = requests.post(
+                SEARCH_SERVICE_URL,
+                json={
+                    "query": query,
+                    "top_k": 5,
+                },
+                timeout=30,
+            )
 
-    results = data.get("results", [])
+            response.raise_for_status()
 
-    if not results:
-        return "No matching trails were found in the TrailMate database."
+            data = response.json()
 
-    return json.dumps(results)
+            results = data.get(
+                "results",
+                [],
+            )
+
+            if not results:
+
+                observation.update(
+                    output={
+                        "result_count": 0,
+                        "status": "no_matches",
+                    }
+                )
+
+                return (
+                    "No matching trails were found in the TrailMate database."
+                )
+
+            observation.update(
+                output={
+                    "result_count": len(results),
+                    "status": "success",
+                }
+            )
+
+            return json.dumps(results)
+
+        except Exception as exc:
+
+            observation.update(
+                output={
+                    "status": "error",
+                    "error": str(exc),
+                }
+            )
+
+            raise
